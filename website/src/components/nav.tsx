@@ -64,7 +64,7 @@ export function Nav() {
             <GitHubIcon className="size-[18px]" />
             <span className="hidden lg:inline">GitHub</span>
           </ButtonLink>
-          <ButtonLink href={site.releases} className="h-9 max-sm:px-3">
+          <ButtonLink href="#download" external={false} className="h-9 max-sm:px-3">
             <ArrowDownToLine className="size-4 transition-transform duration-300 group-hover/btn:translate-y-0.5" strokeWidth={2.2} />
             Download
           </ButtonLink>

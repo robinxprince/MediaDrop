@@ -1,15 +1,32 @@
-import { ArrowDownToLine, ArrowUpRight, BookOpen, Cpu, Package, Scale, ShieldCheck, Tag } from "lucide-react";
+import { ArrowDownToLine, ArrowUpRight, BookOpen, FlaskConical, Package, Scale, ShieldCheck, Tag } from "lucide-react";
 import { Reveal } from "./ui/reveal";
 import { ButtonLink } from "./ui/button";
-import { GitHubIcon } from "./ui/icons";
+import { AppleIcon, GitHubIcon, WindowsIcon } from "./ui/icons";
 import { Logo } from "./ui/logo";
 import { site } from "@/lib/site";
 
 // Install steps from the README.
 const install = [
-  { title: "Unzip and run the installer", body: "Double-click Install MediaDrop.command." },
-  { title: "Allow it once", body: "macOS can't verify the developer yet. Open System Settings › Privacy & Security and click Open Anyway." },
-  { title: "Restart Premiere Pro", body: "Open MediaDrop. The Pr light turns green when Premiere is connected." },
+  {
+    platform: "Mac",
+    steps: [
+      { title: "Unzip and run the installer", body: "Double-click Install MediaDrop.command." },
+      { title: "Allow it once", body: "macOS can't verify the developer yet. Open System Settings › Privacy & Security and click Open Anyway." },
+      { title: "Restart Premiere Pro", body: "Open MediaDrop. The Pr light turns green when Premiere is connected." },
+    ],
+  },
+  {
+    platform: "Windows",
+    steps: [
+      { title: "Extract and run the installer", body: "Right-click the zip, choose Extract All, then double-click Install MediaDrop.cmd." },
+      { title: "Allow it once", body: "If Windows protected your PC appears, click More info › Run anyway. No administrator rights needed." },
+      { title: "Restart Premiere Pro", body: "Open MediaDrop from the Start menu. The Pr light turns green when Premiere is connected." },
+    ],
+  },
+];
+const builds = [
+  { ...site.downloads.mac, Icon: AppleIcon },
+  { ...site.downloads.windows, Icon: WindowsIcon },
 ];
 
 export function Download() {
@@ -31,17 +48,21 @@ export function Download() {
             Ready to Get Your <span className="text-shimmer">Creative Flow</span> Back?
           </h2>
           <p className="mt-5 max-w-lg text-balance text-[17px] leading-relaxed text-fg-2">
-            MediaDrop is available on GitHub. Explore the project, find installation instructions, and get started.
+            Pick your computer and the download starts right away. Free, for Mac and Windows.
           </p>
-          <div className="mt-9 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-            <ButtonLink href={site.releases} size="lg">
-              <ArrowDownToLine className="size-[18px] transition-transform duration-300 group-hover/btn:translate-y-0.5" strokeWidth={2.2} />
-              Download MediaDrop
-            </ButtonLink>
-            <ButtonLink href={site.repo} size="lg" variant="secondary">
-              <GitHubIcon className="size-[18px]" />
-              Explore on GitHub
-            </ButtonLink>
+          {site.beta && (
+            <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-amber-400/10 px-3.5 py-1.5 text-[13px] text-amber-200 ring-1 ring-inset ring-amber-300/25">
+              <FlaskConical className="size-3.5" />
+              These are beta builds. Expect a few rough edges, and updates arrive in the app.
+            </p>
+          )}
+          <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+            {builds.map(({ href, label, Icon }) => (
+              <ButtonLink key={label} href={href} size="lg" external={false}>
+                <Icon className="size-[18px]" />
+                {label}
+              </ButtonLink>
+            ))}
           </div>
           <p className="mt-5 text-[13px] text-fg-3">Free · {site.requirements}</p>
         </Reveal>
@@ -66,20 +87,27 @@ export function Download() {
               <p className="text-[14.5px] leading-relaxed text-fg-2">
                 Search stock media from many sites, browse Envato, YouTube and Google Images, and import straight into Adobe Premiere Pro.
               </p>
-              <div className="flex items-center gap-3 rounded-xl bg-ink/60 px-3.5 py-3 ring-1 ring-line">
-                <Package className="size-4 shrink-0 text-drop-soft" />
-                <span className="min-w-0 truncate font-mono text-[12px] text-fg-2">MediaDrop-{site.version}-mac-apple-silicon.zip</span>
-                <span className="ml-auto shrink-0 font-mono text-[11px] text-fg-3">Releases</span>
+              <div className="flex flex-col gap-2">
+                {builds.map(({ file, system, Icon }) => (
+                  <div key={file} className="flex items-center gap-3 rounded-xl bg-ink/60 px-3.5 py-3 ring-1 ring-line">
+                    <Icon className="size-4 shrink-0 text-drop-soft" />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate font-mono text-[12px] text-fg-2">{file}</span>
+                      <span className="text-[11.5px] text-fg-3">{system}</span>
+                    </span>
+                    <Package className="ml-auto size-3.5 shrink-0 text-fg-3" />
+                  </div>
+                ))}
               </div>
               <ul className="mt-auto grid gap-2.5 text-[13px] text-fg-2 sm:grid-cols-2">
                 <li className="flex items-center gap-2">
-                  <Tag className="size-3.5 text-drop-soft" /> Latest release <span className="font-mono text-fg">v{site.version}</span>
+                  <Tag className="size-3.5 text-drop-soft" /> Latest release <span className="font-mono text-fg">v{site.version}{site.beta && " beta"}</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Scale className="size-3.5 text-drop-soft" /> MIT License
                 </li>
                 <li className="flex items-center gap-2">
-                  <Cpu className="size-3.5 text-drop-soft" /> Apple Silicon (M1 or newer)
+                  <ArrowDownToLine className="size-3.5 text-drop-soft" /> Updates in the app
                 </li>
                 <li className="flex items-center gap-2">
                   <ShieldCheck className="size-3.5 text-drop-soft" /> No data collected
@@ -89,20 +117,24 @@ export function Download() {
 
             {/* install steps */}
             <div className="border-t border-line bg-ink-2/60 p-6 sm:p-8 md:border-l md:border-t-0">
-              <p className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-3">Install in three steps</p>
-              <ol className="mt-5 flex flex-col gap-5">
-                {install.map((s, i) => (
-                  <li key={s.title} className="flex gap-3.5">
-                    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-white/[0.05] font-mono text-[11px] text-fg-2 ring-1 ring-line-strong">
-                      {i + 1}
-                    </span>
-                    <span>
-                      <span className="block text-[14px] font-medium text-fg">{s.title}</span>
-                      <span className="mt-0.5 block text-[13px] leading-relaxed text-fg-3">{s.body}</span>
-                    </span>
-                  </li>
-                ))}
-              </ol>
+              {install.map(({ platform, steps }, p) => (
+                <div key={platform} className={p ? "mt-7" : ""}>
+                  <p className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-3">Install on {platform}</p>
+                  <ol className="mt-4 flex flex-col gap-4">
+                    {steps.map((s, i) => (
+                      <li key={s.title} className="flex gap-3.5">
+                        <span className="grid size-6 shrink-0 place-items-center rounded-full bg-white/[0.05] font-mono text-[11px] text-fg-2 ring-1 ring-line-strong">
+                          {i + 1}
+                        </span>
+                        <span>
+                          <span className="block text-[14px] font-medium text-fg">{s.title}</span>
+                          <span className="mt-0.5 block text-[13px] leading-relaxed text-fg-3">{s.body}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ))}
               <a
                 href={site.readme}
                 target="_blank"

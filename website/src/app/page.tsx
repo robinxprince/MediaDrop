@@ -12,7 +12,7 @@ const jsonLd = {
   "@type": "SoftwareApplication",
   name: site.name,
   applicationCategory: "MultimediaApplication",
-  operatingSystem: "macOS (Apple Silicon)",
+  operatingSystem: "macOS (Apple Silicon), Windows 10/11 (x64)",
   softwareVersion: site.version,
   offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
   downloadUrl: site.releases,

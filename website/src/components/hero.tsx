@@ -2,9 +2,9 @@
 
 import { useRef } from "react";
 import { motion, useScroll, useTransform } from "motion/react";
-import { ArrowDownToLine, ArrowRight, MousePointerClick } from "lucide-react";
+import { ArrowRight, MousePointerClick } from "lucide-react";
 import { ButtonLink } from "./ui/button";
-import { GitHubIcon } from "./ui/icons";
+import { AppleIcon, WindowsIcon } from "./ui/icons";
 import { SearchDemo } from "./mock/search-demo";
 import { site } from "@/lib/site";
 
@@ -49,16 +49,15 @@ export function Hero() {
 
       <div className="mx-auto flex max-w-6xl flex-col items-center px-4 text-center sm:px-6">
         <motion.a
-          href={site.releases}
-          target="_blank"
+          href="#download"
           rel="noopener noreferrer"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease }}
           className="group mb-8 inline-flex items-center gap-2 rounded-full bg-white/[0.04] py-1 pl-1 pr-3 text-[13px] text-fg-2 ring-1 ring-inset ring-line-strong backdrop-blur transition-colors hover:bg-white/[0.07] hover:text-fg"
         >
-          <span className="rounded-full bg-drop/15 px-2 py-0.5 font-mono text-[11px] text-drop-soft">v{site.version}</span>
-          Free and open source
+          <span className="rounded-full bg-drop/15 px-2 py-0.5 font-mono text-[11px] text-drop-soft">v{site.version}{site.beta && " beta"}</span>
+          Free and open source · Mac and Windows
           <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
         </motion.a>
 
@@ -86,13 +85,13 @@ export function Hero() {
           transition={{ duration: 0.9, ease, delay: 0.75 }}
           className="mt-9 flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center"
         >
-          <ButtonLink href={site.releases} size="lg">
-            <ArrowDownToLine className="size-[18px] transition-transform duration-300 group-hover/btn:translate-y-0.5" strokeWidth={2.2} />
-            Download MediaDrop
+          <ButtonLink href={site.downloads.mac.href} size="lg" external={false}>
+            <AppleIcon className="size-[18px]" />
+            {site.downloads.mac.label}
           </ButtonLink>
-          <ButtonLink href={site.repo} size="lg" variant="secondary">
-            <GitHubIcon className="size-[18px]" />
-            View on GitHub
+          <ButtonLink href={site.downloads.windows.href} size="lg" external={false}>
+            <WindowsIcon className="size-[17px]" />
+            {site.downloads.windows.label}
           </ButtonLink>
         </motion.div>
 
@@ -102,7 +101,7 @@ export function Hero() {
           transition={{ duration: 1, delay: 1 }}
           className="mt-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[13px] text-fg-3"
         >
-          <span>Built for creators. Available on GitHub.</span>
+          <span>{site.beta ? "Beta builds: expect a few rough edges." : "Built for creators. Available on GitHub."}</span>
           <span aria-hidden="true" className="hidden size-1 rounded-full bg-fg-3/60 sm:block" />
           <span>{site.requirements}</span>
         </motion.p>

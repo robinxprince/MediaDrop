@@ -18,7 +18,7 @@ const btnHeaderYtDownload = document.getElementById("btnHeaderYtDownload");
 const btnHeaderPlaylist = document.getElementById("btnHeaderPlaylist");
 const searchView = document.getElementById("view-search");
 const searchQuery = document.getElementById("searchQuery");
-const sourceStrip = document.getElementById("sourceStrip");
+const searchForm = document.getElementById("searchForm");
 
 const bridgeStatusPill = document.getElementById("bridgeStatusPill");
 
@@ -71,7 +71,7 @@ btnHamburger.addEventListener("click", () => {
 });
 
 // ── TAB SWITCHING LOGIC ──────────────────────────────────────────────────────
-// "search" is the Search panel; "explore" is a site opened from it, shown under the source strip
+// "search" is the Search panel; "explore" is a site picked in it, shown under the same search header
 function switchTab(targetTab) {
   if (targetTab === activeTabName && (views[targetTab] || targetTab === "search")) return;
 
@@ -80,7 +80,8 @@ function switchTab(targetTab) {
   // Hide all webviews
   Object.values(views).forEach(v => v.classList.remove("active"));
   searchView.classList.toggle("active", targetTab === "search");
-  sourceStrip.classList.toggle("hidden", targetTab !== "explore");
+  searchForm.classList.toggle("hidden", targetTab !== "search" && targetTab !== "explore");
+  searchForm.classList.toggle("on-site", targetTab === "explore");
 
   const targetBtn = document.getElementById(`tab-${targetTab === "explore" ? "search" : targetTab}`);
   if (targetBtn) {
@@ -108,7 +109,8 @@ function switchTab(targetTab) {
 document.getElementById("tab-envato").onclick = () => switchTab("envato");
 document.getElementById("tab-youtube").onclick = () => switchTab("youtube");
 document.getElementById("tab-google").onclick = () => switchTab("google");
-document.getElementById("tab-search").onclick = () => switchTab("search");
+// Search returns to the site picked in it, if one is open
+document.getElementById("tab-search").onclick = () => switchTab(search.site !== "all" && !search.site.startsWith("pick:") && views.explore ? "explore" : "search");
 // The Premiere panel opens a site, optionally searching it: { site: "youtube", query: "drone city" }
 const SEARCH_URLS = {
   youtube: (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`,
@@ -1734,46 +1736,54 @@ historyClose.onclick = () => {
 // ── SEARCH EVERY SITE ────────────────────────────────────────────────────────
 // One search fills every tab at once: videos, images, music, sound effects and GIFs.
 // Each site's results appear as soon as it answers, each labelled with where it's
-// from and whether it's free to use. Other sites open with the same search in one click.
+// from and whether it's free to use. Other sites open right here with the same search.
 const collectionChips = document.getElementById("collectionChips");
 const searchResults = document.getElementById("searchResults");
 const searchFreeOnly = document.getElementById("searchFreeOnly");
-const stripQuery = document.getElementById("stripQuery");
-const stripSites = document.getElementById("stripSites");
+const searchSources = document.getElementById("searchSources");
 
 const slug = (q) => encodeURIComponent(q.trim().toLowerCase().replace(/\s+/g, "-"));
 const enc = (q) => encodeURIComponent(q.trim());
 
-// Sites that open in the app with the same search
+// Sites that open inside Search with the same query
 const SITES = {
-  pexelsVideo: { name: "Pexels", url: (q) => `https://www.pexels.com/search/videos/${enc(q)}/` },
-  pixabayVideo: { name: "Pixabay", url: (q) => `https://pixabay.com/videos/search/${enc(q)}/` },
-  coverr: { name: "Coverr", url: (q) => `https://coverr.co/s?q=${enc(q)}` },
-  envatoVideo: { name: "Envato", url: (q) => `https://elements.envato.com/stock-video/${slug(q)}` },
-  youtube: { name: "YouTube", url: (q) => `https://www.youtube.com/results?search_query=${enc(q)}` },
-  unsplash: { name: "Unsplash", url: (q) => `https://unsplash.com/s/photos/${slug(q)}` },
-  pexels: { name: "Pexels", url: (q) => `https://www.pexels.com/search/${enc(q)}/` },
-  pixabayImages: { name: "Pixabay", url: (q) => `https://pixabay.com/images/search/${enc(q)}/` },
-  googleImages: { name: "Google Images", url: (q) => `https://www.google.com/search?tbm=isch&q=${enc(q)}` },
-  envatoPhotos: { name: "Envato", url: (q) => `https://elements.envato.com/photos/${slug(q)}` },
-  pixabayMusic: { name: "Pixabay", url: (q) => `https://pixabay.com/music/search/${enc(q)}/` },
-  fma: { name: "Free Music Archive", url: (q) => `https://freemusicarchive.org/search?quicksearch=${enc(q)}` },
-  envatoMusic: { name: "Envato", url: (q) => `https://elements.envato.com/audio/music/${slug(q)}` },
-  freesound: { name: "Freesound", url: (q) => `https://freesound.org/search/?q=${enc(q)}` },
-  pixabaySfx: { name: "Pixabay", url: (q) => `https://pixabay.com/sound-effects/search/${enc(q)}/` },
-  envatoSfx: { name: "Envato", url: (q) => `https://elements.envato.com/sound-effects/${slug(q)}` },
-  giphy: { name: "GIPHY", url: (q) => `https://giphy.com/search/${slug(q)}` },
-  googleGifs: { name: "Google GIFs", url: (q) => `https://www.google.com/search?tbm=isch&tbs=itp:animated&q=${enc(q)}` }
+  pexelsVideo: { domain: "pexels.com", name: "Pexels", url: (q) => `https://www.pexels.com/search/videos/${enc(q)}/` },
+  pixabayVideo: { domain: "pixabay.com", name: "Pixabay", url: (q) => `https://pixabay.com/videos/search/${enc(q)}/` },
+  coverr: { domain: "coverr.co", name: "Coverr", url: (q) => `https://coverr.co/s?q=${enc(q)}` },
+  envatoVideo: { domain: "elements.envato.com", name: "Envato", url: (q) => `https://elements.envato.com/stock-video/${slug(q)}` },
+  unsplash: { domain: "unsplash.com", name: "Unsplash", url: (q) => `https://unsplash.com/s/photos/${slug(q)}` },
+  pexels: { domain: "pexels.com", name: "Pexels", url: (q) => `https://www.pexels.com/search/${enc(q)}/` },
+  pixabayImages: { domain: "pixabay.com", name: "Pixabay", url: (q) => `https://pixabay.com/images/search/${enc(q)}/` },
+  googleImages: { domain: "google.com", name: "Google Images", url: (q) => `https://www.google.com/search?tbm=isch&q=${enc(q)}` },
+  envatoPhotos: { domain: "elements.envato.com", name: "Envato", url: (q) => `https://elements.envato.com/photos/${slug(q)}` },
+  pixabayMusic: { domain: "pixabay.com", name: "Pixabay", url: (q) => `https://pixabay.com/music/search/${enc(q)}/` },
+  fma: { domain: "freemusicarchive.org", name: "Free Music Archive", url: (q) => `https://freemusicarchive.org/search?quicksearch=${enc(q)}` },
+  envatoMusic: { domain: "elements.envato.com", name: "Envato", url: (q) => `https://elements.envato.com/audio/music/${slug(q)}` },
+  freesound: { domain: "freesound.org", name: "Freesound", url: (q) => `https://freesound.org/search/?q=${enc(q)}` },
+  pixabaySfx: { domain: "pixabay.com", name: "Pixabay", url: (q) => `https://pixabay.com/sound-effects/search/${enc(q)}/` },
+  envatoSfx: { domain: "elements.envato.com", name: "Envato", url: (q) => `https://elements.envato.com/sound-effects/${slug(q)}` },
+  giphy: { domain: "giphy.com", name: "GIPHY", url: (q) => `https://giphy.com/search/${slug(q)}` },
+  googleGifs: { domain: "google.com", name: "Google GIFs", url: (q) => `https://www.google.com/search?tbm=isch&tbs=itp:animated&q=${enc(q)}` }
 };
 
-// Each tab searches its sources in main.js and links to more sites
+// Where MediaDrop's own results come from, for their icons in the source row
+const INLINE_SITES = { Mixkit: "mixkit.co", YouTube: "youtube.com", Flickr: "flickr.com", Wikimedia: "commons.wikimedia.org", Tenor: "tenor.com", Openverse: "openverse.org" };
+
+// Each tab searches its sources in main.js (filterable by "picks") and can open more sites in place
+const ICON = (d) => `<svg class="sv-tab-icon" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 const COLLECTIONS = [
-  { id: "video", label: "Videos", kind: "video", sources: ["mixkitVideo", "youtubeVideo"], sites: ["pexelsVideo", "pixabayVideo", "coverr", "envatoVideo", "youtube"] },
-  { id: "images", label: "Images", kind: "image", sources: ["openverseImages", "commonsImages"], sites: ["unsplash", "pexels", "pixabayImages", "googleImages", "envatoPhotos"] },
-  { id: "music", label: "Music", kind: "audio", sources: ["mixkitMusic", "youtubeMusic"], sites: ["pixabayMusic", "fma", "envatoMusic", "youtube"] },
-  { id: "sfx", label: "Sound effects", kind: "audio", sources: ["mixkitSfx"], sites: ["freesound", "pixabaySfx", "envatoSfx"] },
-  { id: "gifs", label: "GIFs", kind: "image", sources: ["tenor"], sites: ["giphy", "googleGifs"] }
+  { id: "video", label: "Videos", kind: "video", sources: ["mixkitVideo", "youtubeVideo"], picks: ["Mixkit", "YouTube"], sites: ["pexelsVideo", "pixabayVideo", "coverr", "envatoVideo"],
+    icon: ICON('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/>') },
+  { id: "images", label: "Images", kind: "image", sources: ["openverseImages", "commonsImages"], picks: ["Flickr", "Wikimedia"], sites: ["unsplash", "pexels", "pixabayImages", "googleImages", "envatoPhotos"],
+    icon: ICON('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9.5" r="1.8"/><path d="m21 16-5-5-9 9"/>') },
+  { id: "music", label: "Music", kind: "audio", sources: ["mixkitMusic", "youtubeMusic"], picks: ["Mixkit", "YouTube"], sites: ["pixabayMusic", "fma", "envatoMusic"],
+    icon: ICON('<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>') },
+  { id: "sfx", label: "Sound effects", kind: "audio", sources: ["mixkitSfx"], picks: ["Mixkit"], sites: ["freesound", "pixabaySfx", "envatoSfx"],
+    icon: ICON('<path d="M3 12h2M7 8v8M11 4v16M15 8v8M19 10v4M21 12h0"/>') },
+  { id: "gifs", label: "GIFs", kind: "image", sources: ["tenor"], picks: ["Tenor"], sites: ["giphy", "googleGifs"],
+    icon: ICON('<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M10 10H8a1.5 1.5 0 0 0-1.5 1.5v1A1.5 1.5 0 0 0 8 14h2v-2H9M12.5 10v4M15.5 14v-4h2.5M15.5 12h2"/>') }
 ];
+const favicon = (domain) => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
 const collectionById = (id) => COLLECTIONS.find((c) => c.id === id) || COLLECTIONS[0];
 
 const LICENCE_BADGE = {
@@ -1785,8 +1795,10 @@ const TIER_ORDER = { free: 0, credit: 1, check: 2 };
 const EXAMPLES = ["car", "city at night", "whoosh", "rain", "upbeat", "explosion", "applause", "ocean"];
 
 const search = {
-  query: "", collection: "video", answers: new Map(), items: new Map(), picked: new Set(), token: 0, stripCollection: "video",
-  freeOnly: false
+  query: "", collection: "video", answers: new Map(), items: new Map(), picked: new Set(), token: 0,
+  freeOnly: false,
+  // "all", "pick:<site>" (one of MediaDrop's sources), "site:<id>" (a site opened in place) or "page" (a result's page)
+  site: "all"
 };
 try {
   search.collection = collectionById(localStorage.getItem("searchTab")).id;
@@ -1798,22 +1810,67 @@ function renderChips() {
   collectionChips.innerHTML = COLLECTIONS.map((c) => {
     const { results, pending } = collectionState(c);
     const count = search.query ? (pending && !results.length ? `<span class="mini-spinner sv-loading"></span>` : `<span class="sv-count">${results.length}${pending ? "+" : ""}</span>`) : "";
-    return `<button type="button" role="tab" class="sv-tab ${c.id === search.collection ? "active" : ""}" data-id="${c.id}" aria-selected="${c.id === search.collection}">${c.label}${count}</button>`;
+    return `<button type="button" role="tab" class="sv-tab ${c.id === search.collection ? "active" : ""}" data-id="${c.id}" aria-selected="${c.id === search.collection}">${c.icon}${c.label}${count}</button>`;
   }).join("");
   collectionChips.querySelectorAll(".sv-tab").forEach((tab) => {
     tab.onclick = () => {
-      search.collection = tab.dataset.id;
+      const to = collectionById(tab.dataset.id);
+      search.collection = to.id;
       try { localStorage.setItem("searchTab", search.collection); } catch (e) {}
       stopPreview();
       renderChips();
-      renderResults();
+      // Keep the same site where the new tab has it (Pexels videos -> Pexels photos)
+      if (search.site.startsWith("site:")) {
+        const name = SITES[search.site.slice(5)].name;
+        const same = to.sites.find((id) => SITES[id].name === name);
+        if (same && search.query) return pickSource(`site:${same}`);
+      } else if (search.site.startsWith("pick:") && to.picks.includes(search.site.slice(5))) {
+        renderSources();
+        renderResults();
+        searchView.scrollTop = 0;
+        return;
+      }
+      pickSource("all");
       searchView.scrollTop = 0;
     };
   });
 }
 
+// The row under the media tabs: MediaDrop's results, each of its sources, then other sites shown in place
+const ALL_ICON = `<svg class="sv-source-icon sv-source-all" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`;
+function renderSources() {
+  const c = collectionById(search.collection);
+  const chip = (key, icon, label, extra = "") =>
+    `<button type="button" role="tab" class="sv-source ${search.site === key ? "active" : ""}" data-key="${key}" aria-selected="${search.site === key}">${icon}<span>${escapeHtml(label)}</span>${extra}</button>`;
+  const img = (domain) => `<img class="sv-source-icon" src="${favicon(domain)}" alt="" draggable="false">`;
+  const count = (name) => {
+    if (!search.query) return "";
+    const { results, pending } = collectionState(c, name);
+    return pending && !results.length ? "" : `<span class="sv-count">${results.length}</span>`;
+  };
+  searchSources.innerHTML =
+    chip("all", ALL_ICON, "All results") +
+    c.picks.map((name) => chip(`pick:${name}`, img(INLINE_SITES[name]), name, count(name))).join("") +
+    `<span class="sv-sources-sep" aria-hidden="true"></span>` +
+    c.sites.map((id) => chip(`site:${id}`, img(SITES[id].domain), SITES[id].name)).join("");
+  searchSources.querySelectorAll(".sv-source").forEach((btn) => { btn.onclick = () => pickSource(btn.dataset.key); });
+}
+
+function pickSource(key) {
+  search.site = key;
+  stopPreview();
+  if (key.startsWith("site:")) {
+    const site = SITES[key.slice(5)];
+    exploreUrl(search.query ? site.url(search.query) : `https://${site.domain}/`);
+  } else {
+    switchTab("search");
+    renderResults();
+  }
+  renderSources();
+}
+
 // Copyright-free first, then free-with-credit, then copyrighted; sites keep their own order within each
-function collectionState(c) {
+function collectionState(c, siteName) {
   let pending = false;
   const errors = [];
   const results = [];
@@ -1823,6 +1880,7 @@ function collectionState(c) {
     if (!answer) { pending = true; return; }
     if (!answer.ok) { errors.push(answer.error); return; }
     answer.results.forEach((r) => {
+      if (siteName && r.site !== siteName) return;
       if (!search.freeOnly || r.licence.tier !== "check") results.push({ ...r, key: `${source}:${r.id}`, source });
       else hidden++;
     });
@@ -1834,8 +1892,16 @@ function collectionState(c) {
 function runSearch(query) {
   const q = String(query || "").trim().slice(0, 120);
   if (!q) return;
-  switchTab("search");
   searchQuery.value = q;
+  // A site picked above searches itself; otherwise MediaDrop's results show
+  if (search.site.startsWith("site:")) {
+    search.query = q;
+    pickSource(search.site);
+  } else {
+    if (search.site === "page") search.site = "all";
+    switchTab("search");
+    renderSources();
+  }
   if (q === search.query && search.answers.size) return;
   search.query = q;
   search.answers.clear();
@@ -1847,7 +1913,7 @@ function runSearch(query) {
     search.answers.set(source, answer);
     if (answer.ok) answer.results.forEach((r) => search.items.set(`${source}:${r.id}`, { ...r, source }));
     renderChips();
-    if (collectionById(search.collection).sources.includes(source)) renderResults();
+    if (collectionById(search.collection).sources.includes(source)) { renderSources(); renderResults(); }
   });
   renderChips();
   renderResults();
@@ -1879,7 +1945,8 @@ function renderResults() {
   }
 
   const c = collectionById(search.collection);
-  const { results, pending, errors, hidden } = collectionState(c);
+  const pick = search.site.startsWith("pick:") ? search.site.slice(5) : "";
+  const { results, pending, errors, hidden } = collectionState(c, pick);
   const noun = c.id === "gifs" ? c.label : c.label.toLowerCase();
   // A preview keeps playing while results update; its button is found again afterwards
   const playingKey = previewButton && previewButton.closest("[data-key]") ? previewButton.closest("[data-key]").dataset.key : "";
@@ -1888,22 +1955,17 @@ function renderResults() {
   if (results.length) body = c.kind === "audio" ? audioList(results) : mediaGrid(results, c.id !== "video");
   else if (pending) body = `<p class="sv-empty"><span class="mini-spinner sv-loading"></span>Searching…</p>`;
   else if (hidden) body = `<p class="sv-empty">All ${hidden} ${noun} found are copyrighted. Untick “Free to use only” to see them.</p>`;
-  else body = `<p class="sv-empty">No ${noun} found for “${escapeHtml(search.query)}”. Try simpler words, or the sites below.</p>`;
+  else body = `<p class="sv-empty">No ${noun} found for “${escapeHtml(search.query)}”. Try simpler words, or pick another site above.</p>`;
 
   searchResults.innerHTML = `
     <div class="sv-legend">${legend()}${pending && results.length ? `<span class="sv-more-coming"><span class="mini-spinner sv-loading"></span>More coming</span>` : ""}</div>
     ${body}
-    ${errors.length && !results.length ? `<p class="sv-error">Some sites didn't answer (${escapeHtml(errors[0])}). Try again in a moment.</p>` : ""}
-    <div class="sv-elsewhere">
-      <span>More “${escapeHtml(search.query)}” ${noun} on</span>
-      ${c.sites.map((id) => `<button type="button" class="sv-site" data-site="${id}">${escapeHtml(SITES[id].name)}</button>`).join("")}
-    </div>`;
+    ${errors.length && !results.length ? `<p class="sv-error">Some sites didn't answer (${escapeHtml(errors[0])}). Try again in a moment.</p>` : ""}`;
   bindResults(searchResults);
   if (playingKey) {
     const btn = searchResults.querySelector(`[data-key="${CSS.escape(playingKey)}"] .sv-play`);
     if (btn) { previewButton = btn; btn.classList.add("playing"); btn.innerHTML = PAUSE; }
   }
-  searchResults.querySelectorAll(".sv-site").forEach((btn) => { btn.onclick = () => openSite(btn.dataset.site, c.id); });
 }
 
 function legend() {
@@ -1998,8 +2060,9 @@ function openItem(item) {
     switchTab("youtube");
     views.youtube.loadURL(item.url);
   } else if (item.page) {
+    search.site = "page";
     exploreUrl(item.page);
-    renderStrip(null);
+    renderSources();
   }
 }
 
@@ -2085,7 +2148,7 @@ function togglePreview(item, btn) {
   });
 }
 
-// ── A site opened from Search, with the strip to hop between sites ──
+// ── A site shown inside Search, under the search header ──
 function exploreUrl(url) {
   const existing = views.explore;
   const wv = createCustomWebview("explore", url);
@@ -2095,26 +2158,9 @@ function exploreUrl(url) {
   stopPreview();
 }
 
-function openSite(siteId, colId) {
-  search.stripCollection = colId;
-  exploreUrl(SITES[siteId].url(search.query));
-  renderStrip(siteId);
-}
-
-function renderStrip(activeSite) {
-  const col = collectionById(search.stripCollection);
-  stripQuery.textContent = search.query ? `“${search.query}” on` : "";
-  stripSites.innerHTML = activeSite && col.sites ? col.sites.map((id) =>
-    `<button type="button" class="strip-site ${id === activeSite ? "active" : ""}" data-site="${id}">${escapeHtml(SITES[id].name)}</button>`).join("") : "";
-  if (!activeSite) stripQuery.textContent = "";
-  stripSites.querySelectorAll(".strip-site").forEach((btn) => {
-    btn.onclick = () => openSite(btn.dataset.site, search.stripCollection);
-  });
-}
-
-document.getElementById("stripBack").onclick = () => switchTab("search");
 
 renderChips();
+renderSources();
 renderResults();
 
 // ── WHOLE PLAYLISTS ──────────────────────────────────────────────────────────

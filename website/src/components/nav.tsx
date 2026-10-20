@@ -60,11 +60,11 @@ export function Nav() {
         </ul>
 
         <div className="flex items-center gap-1.5">
-          <ButtonLink href={site.repo} variant="ghost" className="hidden sm:inline-flex" aria-label="MediaDrop on GitHub">
+          <ButtonLink href={site.repo} variant="ghost" className="max-sm:hidden" aria-label="MediaDrop on GitHub">
             <GitHubIcon className="size-[18px]" />
             <span className="hidden lg:inline">GitHub</span>
           </ButtonLink>
-          <ButtonLink href={site.releases} className="hidden h-9 sm:inline-flex">
+          <ButtonLink href={site.releases} className="h-9 max-sm:px-3">
             <ArrowDownToLine className="size-4 transition-transform duration-300 group-hover/btn:translate-y-0.5" strokeWidth={2.2} />
             Download
           </ButtonLink>
@@ -119,12 +119,9 @@ export function Nav() {
                 </motion.li>
               ))}
             </ul>
-            <div className="mt-2 grid grid-cols-2 gap-2 border-t border-line p-2 pt-4">
-              <ButtonLink href={site.repo} variant="secondary" size="lg">
-                <GitHubIcon className="size-[18px]" /> GitHub
-              </ButtonLink>
-              <ButtonLink href={site.releases} size="lg">
-                <ArrowDownToLine className="size-4" strokeWidth={2.2} /> Download
+            <div className="mt-2 border-t border-line p-2 pt-4">
+              <ButtonLink href={site.repo} variant="secondary" size="lg" className="w-full">
+                <GitHubIcon className="size-[18px]" /> View on GitHub
               </ButtonLink>
             </div>
           </motion.div>

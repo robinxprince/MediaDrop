@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output (release zips go to GitHub Releases, not the repo)
+dist/
+*.zip
+
+# Downloaded tools: recreated by `npm run fetch-tools` (too large for git)
+vendor/bin/
+vendor/yt-dlp/
+
+# macOS metadata
+.DS_Store
+
+# Logs and editor state
+*.log
+npm-debug.log*
+.vscode/
+.idea/

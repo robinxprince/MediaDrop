@@ -1,0 +1,24 @@
+{
+  "name": "mediadrop",
+  "version": "1.0.1",
+  "description": "Search stock media from many sites, browse Envato, YouTube and Google Images, and import straight into Adobe Premiere Pro",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "package": "node scripts/package-dist.js",
+    "build-app": "node scripts/build-app.js",
+    "install-extension": "node scripts/install-extension.js",
+    "fetch-tools": "node scripts/fetch-tools.js"
+  },
+  "devDependencies": {
+    "@electron/fuses": "^2.1.3",
+    "electron": "^44.9.0"
+  },
+  "license": "MIT",
+  "author": "robinxprince",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/robinxprince/MediaDrop.git"
+  },
+  "homepage": "https://github.com/robinxprince/MediaDrop"
+}

@@ -2,15 +2,23 @@
 
 Search stock video, music, sound effects, images and GIFs from many sites at once, browse **Envato Elements**, **YouTube** and **Google Images**, and drop what you find straight into **Adobe Premiere Pro**: downloaded, converted to an edit-friendly format, and placed on your timeline.
 
-Free and open source. macOS on Apple Silicon (M1 or newer), Premiere Pro 22 or newer.
+Free and open source. macOS on Apple Silicon (M1 or newer) or Windows 10/11 (64-bit), Premiere Pro 22 or newer.
 
 ## Download
 
-Get the latest `MediaDrop-<version>-mac-apple-silicon.zip` from **[Releases](https://github.com/robinxprince/MediaDrop/releases/latest)**, unzip it, and follow `README.txt`. In short:
+Get the latest zip for your computer from **[Releases](https://github.com/robinxprince/MediaDrop/releases/latest)**, unzip it, and follow `README.txt`. In short:
+
+**Mac:** `MediaDrop-<version>-mac-apple-silicon.zip`
 
 1. Double-click **Install MediaDrop.command**. macOS will warn that it can't verify the developer (MediaDrop isn't registered with Apple). Open **System Settings → Privacy & Security** and click **Open Anyway**.
 2. Restart Premiere Pro.
 3. Open MediaDrop. The **Pr** light turns green when Premiere is connected.
+
+**Windows:** `MediaDrop-<version>-windows-x64.zip`
+
+1. Right-click the zip, choose **Extract All**, then double-click **Install MediaDrop.cmd** in the extracted folder. If Windows shows "Windows protected your PC" (MediaDrop isn't signed with a paid certificate), click **More info → Run anyway**. It installs for your account only, so no administrator rights are needed.
+2. Restart Premiere Pro.
+3. Open MediaDrop from the Start menu. The **Pr** light turns green when Premiere is connected.
 
 MediaDrop checks for new versions and shows an **Update** button in the top bar when one is out; it installs in one click.
 
@@ -24,29 +32,31 @@ MediaDrop checks for new versions and shows an **Update** button in the top bar 
 - **Any site:** right-click an image, GIF or video to import it.
 - **Organised imports:** media lands in **MediaDrop Imports** bins by type (Videos, Images, GIFs, Music), on the timeline, or in the Source Monitor.
 - **Works without Premiere:** everything is saved to `Downloads/MediaDrop_Imports`, or a **MediaDrop Media** folder next to your project, so nothing is lost if Premiere is closed. It's imported as soon as Premiere is back.
-- **Automatic conversion:** VP9, AV1, WebM, WebP, AVIF, SVG, OGG, FLAC and other formats Premiere struggles with are converted on import, using Apple's hardware encoder.
+- **Automatic conversion:** VP9, AV1, WebM, WebP, AVIF, SVG, OGG, FLAC and other formats Premiere struggles with are converted on import, using the hardware encoder (Apple VideoToolbox on Mac; NVIDIA, Intel or AMD on Windows).
 
 ## Privacy
 
-MediaDrop has no server and collects nothing. Logins stay on your Mac, encrypted with your Keychain. Signing in to YouTube is only needed for age-restricted or members-only videos; use a secondary Google account if you do, because downloading while signed in can get an account rate-limited.
+MediaDrop has no server and collects nothing. Logins stay on your computer, encrypted with your Mac's Keychain or your Windows account. Signing in to YouTube is only needed for age-restricted or members-only videos; use a secondary Google account if you do, because downloading while signed in can get an account rate-limited.
 
 Only download content you have the right to use. The licence labels in Search come from each site; check the original page before using a result commercially.
 
 ## Building from source
 
-Requires Node.js 20+ and macOS on Apple Silicon.
+Requires Node.js 20+, on macOS (Apple Silicon) or Windows.
 
 ```bash
 npm install
-npm run fetch-tools        # downloads yt-dlp, ffmpeg and ffprobe into vendor/ (checksum-verified)
+npm run fetch-tools        # downloads yt-dlp, ffmpeg and ffprobe for this computer into vendor/<platform>/ (checksum-verified)
 npm run install-extension  # installs the Premiere panel for development
 npm start                  # runs the app from source
 ```
 
-To build a release:
+To build a release (on a Mac; the Windows release builds on a Mac too):
 
 ```bash
-npm run package            # builds /Applications/MediaDrop.app and dist/MediaDrop-<version>-mac-apple-silicon.zip
+npm run package                   # builds /Applications/MediaDrop.app and dist/MediaDrop-<version>-mac-apple-silicon.zip
+npm run fetch-tools -- win32      # once: Windows yt-dlp and ffmpeg into vendor/win32/
+npm run package:win               # builds dist/MediaDrop-<version>-windows-x64.zip
 ```
 
 See [SHIPPING.md](SHIPPING.md) for releasing, signing and updates.
@@ -54,7 +64,7 @@ See [SHIPPING.md](SHIPPING.md) for releasing, signing and updates.
 ## How it works
 
 ```
-MediaDrop.app (Electron)                     Premiere Pro
+MediaDrop app (Electron)                     Premiere Pro
 ├─ main.js         downloads, yt-dlp,         └─ premiere-extension/ (CEP panel)
 │                  ffmpeg conversion, search,    ├─ server.js   HTTP bridge on 127.0.0.1:48200
 │                  updates                       └─ host.jsx    imports files, places clips

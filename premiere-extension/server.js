@@ -1,7 +1,6 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const cp = require("child_process");
 
 const PORT = 48200;
 const csi = (typeof CSInterface !== "undefined") ? new CSInterface() : null;
@@ -109,10 +108,8 @@ const server = http.createServer(async (req, res) => {
 
     pingSurface.on("error", () => {
       // 2. App not running, launch standalone app
-      log("Surface server not responding, launching /Applications/MediaDrop.app via open...");
-      cp.execFile("/usr/bin/open", ["-a", "MediaDrop"], (err) => {
-        if (err) log("Error launching app: " + err.message);
-      });
+      log("Surface server not responding, launching MediaDrop...");
+      MediaDropDesktop.launchApp((err) => log("Error launching app: " + err.message));
       sendJson(res, 200, { ok: true, method: "spawn" });
     });
 

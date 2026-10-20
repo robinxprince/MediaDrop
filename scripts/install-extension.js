@@ -10,7 +10,10 @@ const os = require("os");
 
 const EXTENSION_NAME = "MediaDropBackend";
 const SOURCE_DIR = path.join(__dirname, "..", "premiere-extension");
-const USER_CEP_DIR = path.join(os.homedir(), "Library", "Application Support", "Adobe", "CEP", "extensions");
+const IS_WIN = process.platform === "win32";
+const USER_CEP_DIR = IS_WIN
+  ? path.join(process.env.APPDATA, "Adobe", "CEP", "extensions")
+  : path.join(os.homedir(), "Library", "Application Support", "Adobe", "CEP", "extensions");
 const TARGET_DIR = path.join(USER_CEP_DIR, EXTENSION_NAME);
 
 // 1. Ensure user CEP directory exists
@@ -24,7 +27,8 @@ if (!fs.existsSync(USER_CEP_DIR)) {
 const csxsVersions = [11, 12, 13, 14, 15, 16];
 csxsVersions.forEach((v) => {
   try {
-    cp.execSync(`defaults write com.adobe.CSXS.${v} PlayerDebugMode 1`, { stdio: "ignore" });
+    if (IS_WIN) cp.execFileSync("reg", ["add", `HKCU\\Software\\Adobe\\CSXS.${v}`, "/v", "PlayerDebugMode", "/t", "REG_SZ", "/d", "1", "/f"], { stdio: "ignore" });
+    else cp.execSync(`defaults write com.adobe.CSXS.${v} PlayerDebugMode 1`, { stdio: "ignore" });
   } catch (e) {
     console.warn(`  ! Could not set CSXS.${v}:`, e.message);
   }

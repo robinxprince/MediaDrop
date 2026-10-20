@@ -83,6 +83,14 @@ body {
   -webkit-app-region: drag;
 }
 
+/* Windows: no traffic lights; the native minimise/maximise/close buttons (titleBarOverlay) sit on the right */
+[data-platform="win32"] .mac-traffic-lights-zone {
+  width: 12px;
+}
+[data-platform="win32"] .app-header {
+  padding-right: 150px;
+}
+
 /* Brand Mark in Header (Clean, icon only, no text) */
 .brand-cluster {
   -webkit-app-region: no-drag;

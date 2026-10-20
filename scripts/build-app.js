@@ -89,11 +89,11 @@ itemsToCopy.forEach((item) => {
 // Bundled command-line tools: ffmpeg, ffprobe → Contents/Resources/bin; yt-dlp folder build → Contents/Resources/yt-dlp
 const resourcesDir = path.join(TARGET_APP, "Contents", "Resources");
 for (const name of ["bin", "yt-dlp"]) {
-  const src = path.join(ROOT_DIR, "vendor", name);
+  const src = path.join(ROOT_DIR, "vendor", "darwin", name);
   const dest = path.join(resourcesDir, name);
   fs.rmSync(dest, { recursive: true, force: true });
   if (fs.existsSync(src)) cp.execSync(`cp -R "${src}" "${dest}"`);
-  else console.warn(`  ! vendor/${name} missing: run 'npm run fetch-tools' (falls back to Homebrew yt-dlp/ffmpeg)`);
+  else console.warn(`  ! vendor/darwin/${name} missing: run 'npm run fetch-tools' (falls back to Homebrew yt-dlp/ffmpeg)`);
 }
 fs.copyFileSync(path.join(ROOT_DIR, "vendor", "THIRD_PARTY_NOTICES.txt"), path.join(resourcesDir, "THIRD_PARTY_NOTICES.txt"));
 

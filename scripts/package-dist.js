@@ -1,20 +1,24 @@
 #!/usr/bin/env node
 
-// Packages the app, the Premiere extension and a one-click installer into the release zip
+// Packages the app, the Premiere extension and a one-click installer into the release zip.
+//   npm run package       macOS (Apple Silicon): dist/MediaDrop-<version>-mac-apple-silicon.zip
+//   npm run package:win   Windows x64:           dist/MediaDrop-<version>-windows-x64.zip
+// The updater (main.js) finds each platform's zip by those names and expects MediaDrop-Setup inside.
 
 const fs = require("fs");
 const path = require("path");
 const cp = require("child_process");
 
+const IS_WIN = process.argv[2] === "win";
 const ROOT_DIR = path.resolve(__dirname, "..");
 const DIST_DIR = path.join(ROOT_DIR, "dist");
-const SETUP_DIR = path.join(DIST_DIR, "MediaDrop-Setup");
+const SETUP_DIR = IS_WIN ? path.join(DIST_DIR, "win", "MediaDrop-Setup") : path.join(DIST_DIR, "MediaDrop-Setup");
 const VERSION = require(path.join(ROOT_DIR, "package.json")).version;
-const ZIP_PATH = path.join(DIST_DIR, `MediaDrop-${VERSION}-mac-apple-silicon.zip`);
+const ZIP_PATH = path.join(DIST_DIR, `MediaDrop-${VERSION}-${IS_WIN ? "windows-x64" : "mac-apple-silicon"}.zip`);
 
 // 1. Ensure fresh native app build
 console.log("\n[1/6] Building fresh native application...");
-cp.execSync("node scripts/build-app.js", { cwd: ROOT_DIR, stdio: "inherit" });
+cp.execSync(`node scripts/${IS_WIN ? "build-win.js" : "build-app.js"}`, { cwd: ROOT_DIR, stdio: "inherit" });
 
 // 2. Prepare dist directory
 console.log("\n[2/6] Preparing distribution staging directory...");
@@ -23,19 +27,110 @@ if (fs.existsSync(SETUP_DIR)) {
 }
 fs.mkdirSync(SETUP_DIR, { recursive: true });
 
-// 3. Copy MediaDrop.app
-console.log("\n[3/6] Packaging MediaDrop.app...");
-cp.execSync('cp -R "/Applications/MediaDrop.app" "' + SETUP_DIR + '/"');
+// 3. Copy the app
+if (IS_WIN) {
+  console.log("\n[3/6] Packaging MediaDrop for Windows...");
+  fs.cpSync(path.join(DIST_DIR, "win", "MediaDrop"), path.join(SETUP_DIR, "MediaDrop"), { recursive: true });
+} else {
+  console.log("\n[3/6] Packaging MediaDrop.app...");
+  cp.execSync('cp -R "/Applications/MediaDrop.app" "' + SETUP_DIR + '/"');
+}
 
 // 4. Copy premiere-extension
 console.log("\n[4/6] Packaging Premiere Pro extension backend...");
-const extSrc = path.join(ROOT_DIR, "premiere-extension");
-const extDest = path.join(SETUP_DIR, "premiere-extension");
-cp.execSync(`cp -R "${extSrc}" "${extDest}"`);
+fs.cpSync(path.join(ROOT_DIR, "premiere-extension"), path.join(SETUP_DIR, "premiere-extension"), { recursive: true });
 
-// 5. Create "Install MediaDrop.command"
-console.log("\n[5/6] Creating One-Click Installer script (Install MediaDrop.command)...");
-const installerScript = `#!/bin/bash
+if (IS_WIN) packageWindowsInstaller();
+else packageMacInstaller();
+fs.copyFileSync(path.join(ROOT_DIR, "vendor", "THIRD_PARTY_NOTICES.txt"), path.join(SETUP_DIR, "THIRD_PARTY_NOTICES.txt"));
+
+// 6. Create Zip archive
+console.log("\n[6/6] Creating distributable zip archive...");
+if (fs.existsSync(ZIP_PATH)) {
+  fs.rmSync(ZIP_PATH, { force: true });
+}
+
+if (process.platform === "win32") {
+  // tar on Windows 10 and 11 writes zips (-a picks the format from the extension)
+  cp.execFileSync("tar", ["-a", "-c", "-f", ZIP_PATH, "-C", path.dirname(SETUP_DIR), path.basename(SETUP_DIR)]);
+} else {
+  // ditto keeps permissions and executable bits; macOS metadata (._ files) is left out
+  cp.execSync(`ditto -c -k --norsrc --noextattr --keepParent "${SETUP_DIR}" "${ZIP_PATH}"`);
+}
+
+const stats = fs.statSync(ZIP_PATH);
+const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
+
+console.log(`\nCreated ${ZIP_PATH} (${sizeMB} MB)`);
+
+// 5. Windows: "Install MediaDrop.cmd" runs install.ps1 (scripts/windows), which the updater also runs
+function packageWindowsInstaller() {
+  console.log("\n[5/6] Adding the installer (Install MediaDrop.cmd)...");
+  fs.copyFileSync(path.join(__dirname, "windows", "install.ps1"), path.join(SETUP_DIR, "install.ps1"));
+  // cmd.exe expects Windows line endings
+  const cmd = fs.readFileSync(path.join(__dirname, "windows", "Install MediaDrop.cmd"), "utf-8").replace(/\r?\n/g, "\r\n");
+  fs.writeFileSync(path.join(SETUP_DIR, "Install MediaDrop.cmd"), cmd);
+
+  const readmeContent = `=======================================================
+        MediaDrop ${VERSION} - Install Guide (Windows)
+=======================================================
+
+Requirements: Windows 10 or 11 (64-bit) and Adobe Premiere Pro.
+
+STEP 1 - Unzip, then run the installer
+  Right-click the zip > Extract All, open the extracted
+  MediaDrop-Setup folder and double-click "Install MediaDrop.cmd".
+
+  Windows will probably show "Windows protected your PC"
+  (MediaDrop is free and not signed with a paid certificate).
+  To allow it:
+    1. Click "More info".
+    2. Click "Run anyway".
+
+  MediaDrop installs for your Windows account only, so it
+  doesn't ask for administrator rights. It adds MediaDrop to
+  the Start menu and the desktop.
+
+STEP 2 - Restart Premiere Pro
+  If Premiere Pro was open, quit it and open it again.
+
+STEP 3 - Use it
+  Open a project with a sequence, then open MediaDrop.
+  The "Pr" light in MediaDrop turns green when connected.
+
+TIPS
+  - Use Search to find videos, images, music, sound effects and
+    GIFs from many sites. Each result says if it's free to use.
+  - Right-click any image, GIF or video in MediaDrop to import it.
+  - Click the download icon on a YouTube thumbnail to pick a quality.
+  - Press Ctrl+Shift+M to show MediaDrop from any app
+    (change it in Settings).
+  - Everything is saved to Downloads\\MediaDrop_Imports, even
+    when Premiere Pro isn't open.
+  - When a new version is out, an "Update" button appears in
+    the top bar. Click it to install the update in one step.
+  - To uninstall: Settings > Apps > Installed apps > MediaDrop.
+    Your downloads are kept.
+
+SIGNING IN (optional)
+  You only need to sign in to YouTube for age-restricted or
+  members-only videos. Public videos download without it.
+  - Use a secondary Google account. Downloading with yt-dlp
+    while signed in can get an account rate-limited.
+  - Logins stay on your PC, encrypted by Windows for your
+    account. MediaDrop has no server and sends your data nowhere.
+
+Only download content you have the right to use.
+Third-party licenses: THIRD_PARTY_NOTICES.txt
+=======================================================
+`;
+  fs.writeFileSync(path.join(SETUP_DIR, "README.txt"), readmeContent.replace(/\n/g, "\r\n"), "utf-8");
+}
+
+function packageMacInstaller() {
+  // 5. Create "Install MediaDrop.command"
+  console.log("\n[5/6] Creating One-Click Installer script (Install MediaDrop.command)...");
+  const installerScript = `#!/bin/bash
 # MediaDrop Automated One-Click Installer for macOS
 DIR="$( cd "$( dirname "\${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
@@ -99,12 +194,12 @@ echo ""
 echo "You can close this Terminal window now."
 `;
 
-const installerPath = path.join(SETUP_DIR, "Install MediaDrop.command");
-fs.writeFileSync(installerPath, installerScript, { mode: 0o755 });
-cp.execSync(`chmod +x "${installerPath}"`);
+  const installerPath = path.join(SETUP_DIR, "Install MediaDrop.command");
+  fs.writeFileSync(installerPath, installerScript, { mode: 0o755 });
+  cp.execSync(`chmod +x "${installerPath}"`);
 
-// Create README.txt
-const readmeContent = `=======================================================
+  // Create README.txt
+  const readmeContent = `=======================================================
         MediaDrop ${VERSION} - Install Guide (macOS)
 =======================================================
 
@@ -156,19 +251,5 @@ Third-party licenses: THIRD_PARTY_NOTICES.txt
 =======================================================
 `;
 
-fs.writeFileSync(path.join(SETUP_DIR, "README.txt"), readmeContent, "utf-8");
-fs.copyFileSync(path.join(ROOT_DIR, "vendor", "THIRD_PARTY_NOTICES.txt"), path.join(SETUP_DIR, "THIRD_PARTY_NOTICES.txt"));
-
-// 6. Create Zip archive
-console.log("\n[6/6] Creating distributable zip archive...");
-if (fs.existsSync(ZIP_PATH)) {
-  fs.rmSync(ZIP_PATH, { force: true });
+  fs.writeFileSync(path.join(SETUP_DIR, "README.txt"), readmeContent, "utf-8");
 }
-
-// ditto keeps permissions and executable bits; macOS metadata (._ files) is left out
-cp.execSync(`ditto -c -k --norsrc --noextattr --keepParent "${SETUP_DIR}" "${ZIP_PATH}"`);
-
-const stats = fs.statSync(ZIP_PATH);
-const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
-
-console.log(`\nCreated ${ZIP_PATH} (${sizeMB} MB)`);

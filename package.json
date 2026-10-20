@@ -6,13 +6,17 @@
   "scripts": {
     "start": "electron .",
     "package": "node scripts/package-dist.js",
+    "package:win": "node scripts/package-dist.js win",
     "build-app": "node scripts/build-app.js",
+    "build-win": "node scripts/build-win.js",
     "install-extension": "node scripts/install-extension.js",
     "fetch-tools": "node scripts/fetch-tools.js"
   },
   "devDependencies": {
     "@electron/fuses": "^2.1.3",
-    "electron": "^44.9.0"
+    "@electron/get": "^5.1.0",
+    "electron": "^44.9.0",
+    "resedit": "^3.1.0"
   },
   "license": "MIT",
   "author": "robinxprince",

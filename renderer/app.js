@@ -1,5 +1,18 @@
 // MediaDrop Renderer Application Logic
 
+// ── PLATFORM ─────────────────────────────────────────────────────────────────
+// Windows gets native window buttons in the header (styles.css) and Windows names for keys and Explorer
+const IS_WIN = window.api.platform === "win32";
+document.documentElement.dataset.platform = window.api.platform;
+const FILE_MANAGER = IS_WIN ? "File Explorer" : "Finder";
+if (IS_WIN) {
+  document.querySelectorAll('[title*="Finder"]').forEach((el) => { el.title = el.title.replace("Finder", FILE_MANAGER); });
+  document.getElementById("toastReveal").textContent = `Show in ${FILE_MANAGER}`;
+  document.getElementById("navBack").title = "Go Back (Mouse Back / Alt+Left)";
+  document.getElementById("navForward").title = "Go Forward (Mouse Forward / Alt+Right)";
+  document.getElementById("btnResetHotkey").title = "Reset to Ctrl+Shift+M";
+}
+
 // ── DOM ELEMENTS ─────────────────────────────────────────────────────────────
 const sidebar = document.getElementById("sidebar");
 const btnHamburger = document.getElementById("btnHamburger");
@@ -546,7 +559,9 @@ function showNotice(text, icon = "✓") {
 
 const DEFAULT_HOTKEY = "CommandOrControl+Shift+M";
 const HOTKEY_HINT = "Brings MediaDrop up from any app";
-const KEY_SYMBOLS = { CommandOrControl: "⌘", Control: "⌃", Alt: "⌥", Shift: "⇧" };
+const KEY_SYMBOLS = IS_WIN
+  ? { CommandOrControl: "Ctrl", Control: "Ctrl", Alt: "Alt", Shift: "Shift", Super: "Win" }
+  : { CommandOrControl: "⌘", Control: "⌃", Alt: "⌥", Shift: "⇧" };
 const PUNCTUATION_KEYS = {
   Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/", Backslash: "\\",
   BracketLeft: "[", BracketRight: "]", Minus: "-", Equal: "=", Backquote: "`"
@@ -718,8 +733,9 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   const modifiers = [];
-  if (e.metaKey) modifiers.push("CommandOrControl");
-  if (e.ctrlKey) modifiers.push("Control");
+  // CommandOrControl is ⌘ on macOS and Ctrl on Windows, where the Windows key is Super
+  if (e.metaKey) modifiers.push(IS_WIN ? "Super" : "CommandOrControl");
+  if (e.ctrlKey) modifiers.push(IS_WIN ? "CommandOrControl" : "Control");
   if (e.altKey) modifiers.push("Alt");
   if (e.shiftKey) modifiers.push("Shift");
   appSettings.hotkey = [...modifiers, key].join("+");
@@ -1707,7 +1723,7 @@ function renderHistory() {
     actions.className = "history-actions";
     actions.innerHTML = `
       <button type="button" class="history-action" data-act="place" title="Send to Premiere again" aria-label="Send to Premiere again">${svgIcon("place")}</button>
-      <button type="button" class="history-action" data-act="reveal" title="Show in Finder" aria-label="Show in Finder">${svgIcon("finder")}</button>`;
+      <button type="button" class="history-action" data-act="reveal" title="Show in ${FILE_MANAGER}" aria-label="Show in ${FILE_MANAGER}">${svgIcon("finder")}</button>`;
     actions.querySelector('[data-act="place"]').onclick = () => {
       setToast({ title: "Sending to Premiere", sub: item.name });
       window.api.importLocalFile(item.path, item.site);

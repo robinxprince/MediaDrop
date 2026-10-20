@@ -5,12 +5,12 @@ const cp = require("child_process");
 const http = require("http");
 const crypto = require("crypto");
 
-// Ensure Homebrew and standard binary paths are in process.env.PATH on macOS
-const BREW_PATHS = ["/opt/homebrew/bin", "/usr/local/bin", "/opt/homebrew/opt/ffmpeg/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
-const SYSTEM_PATH = `${BREW_PATHS.join(":")}:${process.env.PATH || ""}`;
-if (process.platform === "darwin") {
-  process.env.PATH = SYSTEM_PATH;
-}
+const IS_WIN = process.platform === "win32";
+
+// Apps opened from Finder get a minimal PATH, so add Homebrew and the standard binary paths on macOS.
+// Every child process inherits process.env.
+const BREW_PATHS = process.platform === "darwin" ? ["/opt/homebrew/bin", "/usr/local/bin", "/opt/homebrew/opt/ffmpeg/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"] : [];
+if (BREW_PATHS.length) process.env.PATH = `${BREW_PATHS.join(":")}:${process.env.PATH || ""}`;
 
 const SETTINGS_FILE = path.join(app.getPath("userData"), "mediadrop-settings.json");
 const DEFAULT_DOWNLOAD_DIR = path.join(app.getPath("downloads"), "MediaDrop_Imports");
@@ -34,15 +34,23 @@ function getDownloadDir() {
   return currentSettings.downloadFolder || DEFAULT_DOWNLOAD_DIR;
 }
 
-// ffmpeg and ffprobe ship inside the app (Contents/Resources/bin; vendor/bin in dev).
-const BUNDLED_BIN_DIRS = [path.join(process.resourcesPath, "bin"), path.join(__dirname, "vendor", "bin")];
+// ffmpeg and ffprobe ship inside the app (Contents/Resources/bin, or resources\bin on Windows; vendor/<platform>/bin in dev).
+const BUNDLED_BIN_DIRS = [path.join(process.resourcesPath, "bin"), path.join(__dirname, "vendor", process.platform, "bin")];
 
 function getBinaryPath(name) {
+  const file = IS_WIN ? `${name}.exe` : name;
   for (const dir of [...BUNDLED_BIN_DIRS, ...BREW_PATHS]) {
-    const full = path.join(dir, name);
+    const full = path.join(dir, file);
     if (fs.existsSync(full)) return full;
   }
-  return name;
+  return file;
+}
+
+// File names that save on macOS and Windows: no path or wildcard characters, no control characters,
+// and none of Windows' device names (CON, NUL, COM1…), which it refuses as file names
+function safeFileName(name) {
+  const clean = String(name || "").replace(/[/\\?%*:|"<>\x00-\x1f]/g, "_");
+  return /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(clean) ? `_${clean}` : clean;
 }
 
 // Never overwrite: an existing file may already be linked as media in a Premiere project.
@@ -158,6 +166,11 @@ function surfaceWindow() {
   mainWindow.moveTop();
   if (currentSettings.alwaysOnTop) {
     mainWindow.setAlwaysOnTop(true, "floating");
+  } else if (IS_WIN) {
+    // Windows won't let a background app take the foreground (it flashes the taskbar instead),
+    // but a moment on top brings the window in front of Premiere
+    mainWindow.setAlwaysOnTop(true);
+    mainWindow.setAlwaysOnTop(false);
   }
 }
 
@@ -235,7 +248,9 @@ function createWindow() {
     minHeight: 650,
     title: "MediaDrop - Asset Ingest for Premiere Pro",
     backgroundColor: "#0c0e14",
-    titleBarStyle: "hiddenInset",
+    titleBarStyle: IS_WIN ? "hidden" : "hiddenInset",
+    // Windows: native window buttons drawn over the right of the header, in its colours (--bg-surface)
+    ...(IS_WIN && { titleBarOverlay: { color: "#11141c", symbolColor: "#9aa3b8", height: 51 } }),
     icon: appIcon || undefined,
     alwaysOnTop: !!currentSettings.alwaysOnTop,
     webPreferences: {
@@ -296,6 +311,7 @@ function handleFromApp(channel, fn) {
 // Every finished download ends here. The file is already saved, so a failed import is
 // reported as "saved, but not imported" — never as a download error.
 function displayPath(p) {
+  if (IS_WIN) return p; // "~" means nothing to Windows users
   const home = app.getPath("home");
   return p.startsWith(home + path.sep) ? "~" + p.slice(home.length) : p;
 }
@@ -468,7 +484,8 @@ function checkBridgeHealth() {
 }
 
 const CHROME_VERSION = process.versions.chrome || "120.0.6099.291";
-const REAL_CHROME_UA = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_VERSION} Safari/537.36`;
+const UA_PLATFORM = IS_WIN ? "Windows NT 10.0; Win64; x64" : "Macintosh; Intel Mac OS X 10_15_7"; // what Chrome reports, matching the client hints
+const REAL_CHROME_UA = `Mozilla/5.0 (${UA_PLATFORM}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_VERSION} Safari/537.36`;
 
 // ── UNIFIED SESSION ──────────────────────────────────────────────────────────
 // Present as the Chrome version we actually run (minus the "Electron/x" token). Faking a
@@ -490,7 +507,7 @@ function setupUnifiedSession() {
   // Handle standard Chromium native downloads
   sharedSession.on("will-download", (event, item, contents) => {
     let filename = item.getFilename() || `asset_${Date.now()}`;
-    filename = filename.replace(/[/\\?%*:|"<>]/g, "_");
+    filename = safeFileName(filename);
 
     const savePath = getUniqueFilePathFor(getDownloadDir(), filename);
     filename = path.basename(savePath);
@@ -637,8 +654,8 @@ function probeMedia(filePath) {
       "-of", "json",
       filePath
     ], {
-      env: { ...process.env, PATH: SYSTEM_PATH },
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
     });
 
     let stdoutData = "";
@@ -676,8 +693,8 @@ function probeMedia(filePath) {
 function runFfmpegWithDrainedPipes(ffmpegCmd, args) {
   return new Promise((resolve) => {
     const proc = cp.spawn(ffmpegCmd, args, {
-      env: { ...process.env, PATH: SYSTEM_PATH },
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
     });
     proc.stdout.resume();
     proc.stderr.resume();
@@ -692,8 +709,8 @@ function runFfmpegWithDrainedPipes(ffmpegCmd, args) {
 function runFfmpegTranscodeWithProgress({ ffmpegCmd, ffmpegArgs, durationSec, downloadId, safeTitle, label }) {
   return new Promise((resolve) => {
     const proc = cp.spawn(ffmpegCmd, ffmpegArgs, {
-      env: { ...process.env, PATH: SYSTEM_PATH },
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
     });
 
     let stderrBuf = "";
@@ -829,15 +846,26 @@ function finishIngest(downloadId, filePath) {
   return { ok: true, outPath: filePath };
 }
 
-// Edit-ready encoders per target, hardware first (VideoToolbox), then a CPU fallback
+// Edit-ready encoders per target, hardware first, then a CPU fallback. macOS has VideoToolbox; on
+// Windows the GPU's encoder is tried (NVIDIA, then Intel, then AMD), and one that's missing fails at once.
+const H264_BITRATE = ["-b:v", "25M", "-maxrate", "35M", "-bufsize", "50M", "-profile:v", "high"];
+const H264_AUDIO = ["-c:a", "aac", "-b:a", "320k", "-ar", "48000", "-movflags", "+faststart"];
+const PRORES_AUDIO = ["-c:a", "pcm_s16le", "-ar", "48000"];
+const H264_HARDWARE = IS_WIN
+  ? [
+    { label: "Converting to H.264 (NVIDIA)", args: ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", ...H264_BITRATE, "-pix_fmt", "yuv420p", ...H264_AUDIO] },
+    { label: "Converting to H.264 (Intel)", args: ["-c:v", "h264_qsv", ...H264_BITRATE, "-pix_fmt", "nv12", ...H264_AUDIO] },
+    { label: "Converting to H.264 (AMD)", args: ["-c:v", "h264_amf", "-rc", "vbr_peak", ...H264_BITRATE, "-pix_fmt", "yuv420p", ...H264_AUDIO] }
+  ]
+  : [{ label: "Converting to H.264 (hardware)", args: ["-c:v", "h264_videotoolbox", ...H264_BITRATE, "-pix_fmt", "yuv420p", ...H264_AUDIO] }];
 const VIDEO_ENCODERS = {
   h264: [
-    { label: "Converting to H.264 (hardware)", args: ["-c:v", "h264_videotoolbox", "-b:v", "25M", "-maxrate", "35M", "-bufsize", "50M", "-profile:v", "high", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "320k", "-ar", "48000", "-movflags", "+faststart"] },
-    { label: "Converting to H.264 (CPU)", args: ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "320k", "-ar", "48000", "-movflags", "+faststart"] }
+    ...H264_HARDWARE,
+    { label: "Converting to H.264 (CPU)", args: ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", ...H264_AUDIO] }
   ],
   prores: [
-    { label: "Converting to ProRes 422 (hardware)", args: ["-c:v", "prores_videotoolbox", "-profile:v", "standard", "-c:a", "pcm_s16le", "-ar", "48000"] },
-    { label: "Converting to ProRes 422 (CPU)", args: ["-c:v", "prores_ks", "-profile:v", "2", "-pix_fmt", "yuv422p10le", "-c:a", "pcm_s16le", "-ar", "48000"] }
+    ...(IS_WIN ? [] : [{ label: "Converting to ProRes 422 (hardware)", args: ["-c:v", "prores_videotoolbox", "-profile:v", "standard", ...PRORES_AUDIO] }]),
+    { label: "Converting to ProRes 422 (CPU)", args: ["-c:v", "prores_ks", "-profile:v", "2", "-pix_fmt", "yuv422p10le", ...PRORES_AUDIO] }
   ]
 };
 
@@ -887,6 +915,49 @@ async function transcodeOrRemuxMedia({ downloadedFile, finalSavePath, downloadId
   const errStr = `Conversion failed. The original download is kept at ${displayPath(downloadedFile)}`;
   sendProgress(downloadId, name, { percent: 100, state: "error", phase: "error", subText: errStr });
   return { ok: false, error: errStr };
+}
+
+// ── PLATFORM TOOLS ───────────────────────────────────────────────────────────
+// Zips: ditto on macOS; on Windows the tar that ships with Windows 10 and 11, which reads zips
+function extractZip(zipPath, destDir) {
+  fs.mkdirSync(destDir, { recursive: true });
+  if (IS_WIN) return execFileAsync(path.join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe"), ["-xf", zipPath, "-C", destDir]);
+  return execFileAsync("/usr/bin/ditto", ["-x", "-k", zipPath, destDir]);
+}
+
+// Any image to PNG, scaled so its longer side is maxSize when given: sips on macOS; on Windows
+// ffmpeg, or Chromium for SVG (the Windows ffmpeg build has no SVG decoder)
+async function convertImageToPng(src, out, maxSize) {
+  if (!IS_WIN) {
+    await execFileAsync("/usr/bin/sips", ["-s", "format", "png", ...(maxSize ? ["-Z", String(maxSize)] : []), src, "--out", out]);
+  } else if (path.extname(src).toLowerCase() === ".svg") {
+    await rasterizeSvg(src, out, maxSize || 1024);
+  } else {
+    await execFileAsync(getBinaryPath("ffmpeg"), ["-y", "-v", "error", "-i", src, "-frames:v", "1", out]);
+  }
+}
+
+// Draws the SVG as an image, where its scripts never run, onto a canvas in a hidden window
+async function rasterizeSvg(src, out, size) {
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  try {
+    await win.loadURL("about:blank");
+    const svgUrl = `data:image/svg+xml;base64,${fs.readFileSync(src).toString("base64")}`;
+    const png = await win.webContents.executeJavaScript(`new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const w = img.naturalWidth || ${size}, h = img.naturalHeight || ${size}, scale = ${size} / Math.max(w, h);
+        const canvas = Object.assign(document.createElement("canvas"), { width: Math.round(w * scale), height: Math.round(h * scale) });
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/png").split(",")[1]);
+      };
+      img.onerror = () => reject(new Error("not a readable SVG"));
+      img.src = ${JSON.stringify(svgUrl)};
+    })`);
+    fs.writeFileSync(out, Buffer.from(png, "base64"));
+  } finally {
+    win.destroy();
+  }
 }
 
 // ── LAYER 2: FORMAT COMPATIBILITY ADAPTER (Pre-Premiere Normalizer) ──────────
@@ -954,7 +1025,7 @@ async function normalizeAndIngestMedia(filePath, originalFilename, downloadId) {
       const outWav = getUniqueFilePath(downloadDir, baseName, "wav");
       emitProgress({ id: downloadId, name: path.basename(outWav), percent: 90, state: "transcoding", phase: "normalizing", subText: "Converting to WAV" });
       const finalAudio = await new Promise((resolve) => {
-        cp.execFile(getBinaryPath("ffmpeg"), ["-y", "-i", filePath, "-vn", "-c:a", "pcm_s16le", "-ar", "48000", outWav], (err) => {
+        cp.execFile(getBinaryPath("ffmpeg"), ["-y", "-i", filePath, "-vn", "-c:a", "pcm_s16le", "-ar", "48000", outWav], { windowsHide: true }, (err) => {
           if (err) console.warn("[MediaDrop Normalizer] Audio conversion error:", err.message);
           resolve(err ? filePath : outWav);
         });
@@ -978,16 +1049,12 @@ async function normalizeAndIngestMedia(filePath, originalFilename, downloadId) {
         });
       }
 
-      await new Promise((resolve) => {
-        cp.execFile("/usr/bin/sips", ["-s", "format", "png", "-Z", "1024", filePath, "--out", outPng], (err) => {
-          if (err) {
-            console.warn("[MediaDrop Normalizer] sips SVG conversion error:", err.message);
-            resolve(filePath);
-          } else {
-            console.log(`[MediaDrop Normalizer] Rasterized SVG -> ${outPng}`);
-            resolve(outPng);
-          }
-        });
+      await convertImageToPng(filePath, outPng, 1024).then(() => {
+        console.log(`[MediaDrop Normalizer] Rasterized SVG -> ${outPng}`);
+        return outPng;
+      }, (err) => {
+        console.warn("[MediaDrop Normalizer] SVG conversion error:", err.message);
+        return filePath;
       }).then((finalFile) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           emitProgress({
@@ -1032,16 +1099,12 @@ async function normalizeAndIngestMedia(filePath, originalFilename, downloadId) {
         });
       }
 
-      await new Promise((resolve) => {
-        cp.execFile("/usr/bin/sips", ["-s", "format", "png", filePath, "--out", outPng], (err) => {
-          if (err) {
-            console.warn("[MediaDrop Normalizer] sips image conversion error:", err.message);
-            resolve(filePath);
-          } else {
-            console.log(`[MediaDrop Normalizer] Converted ${ext} -> ${outPng}`);
-            resolve(outPng);
-          }
-        });
+      await convertImageToPng(filePath, outPng).then(() => {
+        console.log(`[MediaDrop Normalizer] Converted ${ext} -> ${outPng}`);
+        return outPng;
+      }, (err) => {
+        console.warn("[MediaDrop Normalizer] Image conversion error:", err.message);
+        return filePath;
       }).then((finalImg) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           emitProgress({
@@ -1070,12 +1133,12 @@ async function normalizeAndIngestMedia(filePath, originalFilename, downloadId) {
         });
       }
 
-      cp.execFile("/usr/bin/unzip", ["-q", "-o", filePath, "-d", extractDir], async (err) => {
+      extractZip(filePath, extractDir).then(() => null, (e) => e).then(async (err) => {
         if (!err) {
           const primaryFile = findPrimaryMediaFile(extractDir);
           if (primaryFile) {
             const cleanExt = path.extname(primaryFile);
-            const cleanName = path.basename(primaryFile, cleanExt).replace(/[/\\?%*:|"<>]/g, "_").slice(0, 80);
+            const cleanName = safeFileName(path.basename(primaryFile, cleanExt)).slice(0, 80);
             const extractedTarget = getUniqueFilePath(downloadDir, cleanName, cleanExt);
             try {
               fs.copyFileSync(primaryFile, extractedTarget);
@@ -1177,7 +1240,7 @@ function downloadDirectMedia(mediaUrl, mediaType = "image", referrer = "", name 
     else if (mediaType === "audio") ext = ".mp3";
 
     const prefix = ext === ".gif" ? "gif_" : `${mediaType}_`;
-    const cleanName = String(name || "").replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, " ").trim().slice(0, 80);
+    const cleanName = safeFileName(name).replace(/\s+/g, " ").trim().slice(0, 80);
     const fileStem = cleanName || `${prefix}${Date.now()}`;
     const savePath = getUniqueFilePath(downloadDir, fileStem, ext);
     const filename = path.basename(savePath);
@@ -1399,7 +1462,7 @@ function parseYouTubeFormats(info) {
 }
 
 // Electron doubles as the Node runtime yt-dlp needs to solve YouTube's JS challenges
-const YT_DLP_ENV = { ...process.env, PATH: SYSTEM_PATH, ELECTRON_RUN_AS_NODE: "1" };
+const YT_DLP_ENV = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
 
 function ytDlpCommonArgs() {
   const args = ["--js-runtimes", `node:${process.execPath}`];
@@ -1408,13 +1471,15 @@ function ytDlpCommonArgs() {
   return args;
 }
 
-// yt-dlp ships as its folder build, <version>/yt-dlp_macos + _internal: it starts in a fraction of
-// a second, where the single-file build unpacks itself on every run. Folder builds can't update
-// themselves, so MediaDrop keeps verified newer releases in userData/yt-dlp/<version>.
+// yt-dlp ships as its folder build, <version>/yt-dlp_macos (yt-dlp.exe on Windows) + _internal: it
+// starts in a fraction of a second, where the single-file build unpacks itself on every run. Folder
+// builds can't update themselves, so MediaDrop keeps verified newer releases in userData/yt-dlp/<version>.
 // YouTube changes break old versions, so this matters.
 const YT_DLP_USER_DIR = path.join(app.getPath("userData"), "yt-dlp");
-const YT_DLP_DIRS = [YT_DLP_USER_DIR, path.join(process.resourcesPath, "yt-dlp"), path.join(__dirname, "vendor", "yt-dlp")];
+const YT_DLP_DIRS = [YT_DLP_USER_DIR, path.join(process.resourcesPath, "yt-dlp"), path.join(__dirname, "vendor", process.platform, "yt-dlp")];
 const YT_DLP_VERSION_RE = /^\d+(\.\d+)+$/;
+const YT_DLP_ZIP = IS_WIN ? "yt-dlp_win.zip" : "yt-dlp_macos.zip";
+const YT_DLP_EXE = IS_WIN ? "yt-dlp.exe" : "yt-dlp_macos";
 
 function ytDlpInstalls() {
   const installs = [];
@@ -1422,7 +1487,7 @@ function ytDlpInstalls() {
     let names = [];
     try { names = fs.readdirSync(dir); } catch (e) {}
     for (const version of names.filter((n) => YT_DLP_VERSION_RE.test(n))) {
-      const exe = path.join(dir, version, "yt-dlp_macos");
+      const exe = path.join(dir, version, YT_DLP_EXE);
       if (fs.existsSync(exe)) installs.push({ version, exe });
     }
   }
@@ -1437,7 +1502,7 @@ function getYtDlp() {
 
 function execFileAsync(file, args, options = {}) {
   return new Promise((resolve, reject) => {
-    cp.execFile(file, args, options, (err, stdout) => (err ? reject(err) : resolve(stdout)));
+    cp.execFile(file, args, { windowsHide: true, ...options }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
   });
 }
 
@@ -1461,7 +1526,7 @@ async function updateYtDlp() {
   } catch (e) {
     console.warn("[MediaDrop] Could not tidy yt-dlp copies:", e.message);
   }
-  cp.execFile(getYtDlp().exe, ["--version"], { env: YT_DLP_ENV, timeout: 60000 }, () => {});
+  cp.execFile(getYtDlp().exe, ["--version"], { env: YT_DLP_ENV, timeout: 60000, windowsHide: true }, () => {});
 
   const stamp = path.join(YT_DLP_USER_DIR, ".last-update-check");
   try {
@@ -1481,17 +1546,17 @@ async function updateYtDlp() {
 
     const base = `https://github.com/yt-dlp/yt-dlp/releases/download/${version}/`;
     const sums = await (await fetchOk(base + "SHA2-256SUMS")).text();
-    const expected = sums.split("\n").map((l) => l.trim().split(/\s+/)).find((p) => p[1] === "yt-dlp_macos.zip");
-    if (!expected) throw new Error("yt-dlp_macos.zip is not listed in SHA2-256SUMS");
-    const zip = Buffer.from(await (await fetchOk(base + "yt-dlp_macos.zip")).arrayBuffer());
+    const expected = sums.split("\n").map((l) => l.trim().split(/\s+/)).find((p) => p[1] === YT_DLP_ZIP);
+    if (!expected) throw new Error(`${YT_DLP_ZIP} is not listed in SHA2-256SUMS`);
+    const zip = Buffer.from(await (await fetchOk(base + YT_DLP_ZIP)).arrayBuffer());
     if (crypto.createHash("sha256").update(zip).digest("hex") !== expected[0]) throw new Error("checksum mismatch");
 
     work = fs.mkdtempSync(path.join(YT_DLP_USER_DIR, ".tmp-"));
-    const zipPath = path.join(work, "yt-dlp_macos.zip");
+    const zipPath = path.join(work, YT_DLP_ZIP);
     const extracted = path.join(work, version);
     fs.writeFileSync(zipPath, zip);
-    await execFileAsync("/usr/bin/ditto", ["-x", "-k", zipPath, extracted]);
-    const exe = path.join(extracted, "yt-dlp_macos");
+    await extractZip(zipPath, extracted);
+    const exe = path.join(extracted, YT_DLP_EXE);
     await execFileAsync(exe, ["--version"], { env: YT_DLP_ENV, timeout: 60000 }); // runs, and is warmed up
     fs.renameSync(extracted, path.join(YT_DLP_USER_DIR, version));
     ytDlpCurrent = null; // the next download uses the new version; the old copy goes at next launch
@@ -1526,7 +1591,8 @@ function setupYouTubeHandlers() {
     return new Promise((resolve) => {
       cp.execFile(ytDlpCmd, args, {
         maxBuffer: 100 * 1024 * 1024,
-        env: YT_DLP_ENV
+        env: YT_DLP_ENV,
+        windowsHide: true
       }, (err, stdout, stderr) => {
         removeCookieFile(cookieFile);
         if (err) {
@@ -1583,8 +1649,7 @@ function setupYouTubeHandlers() {
     else if (output === "original") formatId = `${streamId}+bestaudio[ext=m4a]/${streamId}+bestaudio/bestvideo[height<=${maxHeight}]+bestaudio/best`;
     else formatId = `${streamId}+bestaudio/bestvideo[height<=${maxHeight}]+bestaudio/best`;
 
-    const safeTitle = (title || "youtube_video")
-      .replace(/[/\\?%*:|"<>]/g, "_")
+    const safeTitle = safeFileName(title || "youtube_video")
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 80);
@@ -1659,7 +1724,7 @@ function setupYouTubeHandlers() {
     }
 
     return new Promise((resolve) => {
-      const proc = cp.spawn(ytDlpCmd, ytArgs, { env: YT_DLP_ENV });
+      const proc = cp.spawn(ytDlpCmd, ytArgs, { env: YT_DLP_ENV, windowsHide: true });
 
       let currentStream = 1;
       let ytStderr = "";
@@ -1976,7 +2041,7 @@ function isYouTubeUrl(value) {
 function runYtDlpJson(args) {
   return new Promise((resolve) => {
     cp.execFile(getYtDlp().exe, [...ytDlpCommonArgs(), "--flat-playlist", "-J", "--no-warnings", ...args],
-      { env: YT_DLP_ENV, maxBuffer: 50 * 1024 * 1024, timeout: 60000 }, (err, stdout, stderr) => {
+      { env: YT_DLP_ENV, maxBuffer: 50 * 1024 * 1024, timeout: 60000, windowsHide: true }, (err, stdout, stderr) => {
         if (err) return resolve({ ok: false, error: (stderr || err.message).trim().split("\n").pop() });
         try { resolve({ ok: true, data: JSON.parse(stdout) }); } catch (e) { resolve({ ok: false, error: "Unreadable response" }); }
       });
@@ -2217,12 +2282,12 @@ function startBridgeMonitor() {
 }
 
 // ── UPDATES ──────────────────────────────────────────────────────────────────
-// Checks GitHub Releases for a newer version. "Update now" downloads the release zip,
+// Checks GitHub Releases for a newer version. "Update now" downloads this platform's release zip,
 // verifies its SHA-256 against the digest GitHub publishes, and runs the bundled installer,
-// which replaces /Applications/MediaDrop.app and the Premiere panel, then reopens the app.
+// which replaces the installed app and the Premiere panel, then reopens the app.
 const UPDATE_REPO = "robinxprince/MediaDrop";
-const UPDATE_ASSET_RE = /-mac-apple-silicon\.zip$/;
-const INSTALLED_APP = "/Applications/MediaDrop.app";
+const UPDATE_ASSET_RE = IS_WIN ? /-windows-x64\.zip$/ : /-mac-apple-silicon\.zip$/;
+const INSTALLED_APP = IS_WIN ? path.join(process.env.LOCALAPPDATA || "", "Programs", "MediaDrop") : "/Applications/MediaDrop.app";
 const UPDATE_CHECK_INTERVAL = 6 * 60 * 60 * 1000;
 let availableUpdate = null;
 let updateInProgress = false;
@@ -2301,8 +2366,12 @@ async function installUpdate() {
   const update = availableUpdate;
   if (!update) return { ok: false, error: "No update is available." };
   if (updateInProgress) return { ok: false, error: "The update is already downloading." };
-  if (!process.execPath.startsWith(INSTALLED_APP + "/")) {
-    return { ok: false, error: "Updates install only when MediaDrop runs from the Applications folder." };
+  const installedPrefix = INSTALLED_APP + path.sep;
+  const execPath = IS_WIN ? process.execPath.toLowerCase() : process.execPath;
+  if (!execPath.startsWith(IS_WIN ? installedPrefix.toLowerCase() : installedPrefix)) {
+    return { ok: false, error: IS_WIN
+      ? "Updates install only when MediaDrop was installed with Install MediaDrop.cmd."
+      : "Updates install only when MediaDrop runs from the Applications folder." };
   }
   updateInProgress = true;
   const workDir = fs.mkdtempSync(path.join(app.getPath("temp"), "mediadrop-update-"));
@@ -2313,19 +2382,21 @@ async function installUpdate() {
 
     sendUpdateProgress({ phase: "installing" });
     const extractDir = path.join(workDir, "extracted");
-    await new Promise((resolve, reject) => {
-      cp.execFile("/usr/bin/ditto", ["-x", "-k", zipPath, extractDir], (err) => (err ? reject(err) : resolve()));
-    });
+    await extractZip(zipPath, extractDir);
     fs.rmSync(zipPath, { force: true });
     const setupDir = path.join(extractDir, "MediaDrop-Setup");
-    const installer = path.join(setupDir, "Install MediaDrop.command");
-    if (!fs.existsSync(installer) || !fs.existsSync(path.join(setupDir, "MediaDrop.app"))) {
+    const installer = path.join(setupDir, IS_WIN ? "install.ps1" : "Install MediaDrop.command");
+    if (!fs.existsSync(installer) || !fs.existsSync(path.join(setupDir, IS_WIN ? "MediaDrop" : "MediaDrop.app"))) {
       throw new Error("The update package is missing its installer.");
     }
 
     // The installer outlives this process: it waits for MediaDrop to quit, replaces it and reopens it
     const log = fs.openSync(path.join(workDir, "install.log"), "w");
-    cp.spawn("/bin/bash", [installer], { detached: true, stdio: ["ignore", log, log], cwd: setupDir }).unref();
+    const [runner, args] = IS_WIN
+      ? [path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installer, "-Update"]]
+      : ["/bin/bash", [installer]];
+    cp.spawn(runner, args, { detached: true, windowsHide: true, stdio: ["ignore", log, log], cwd: setupDir }).unref();
     setTimeout(() => app.quit(), 300);
     return { ok: true };
   } catch (e) {
@@ -2340,7 +2411,8 @@ function setupUpdateHandlers() {
   // The installer has finished by the time it reopens MediaDrop, so its files from the last update can go
   const tempDir = app.getPath("temp");
   for (const name of fs.readdirSync(tempDir)) {
-    if (name.startsWith("mediadrop-update-")) fs.rmSync(path.join(tempDir, name), { recursive: true, force: true });
+    // Windows refuses while the installer still has its log open; that copy goes next launch
+    if (name.startsWith("mediadrop-update-")) try { fs.rmSync(path.join(tempDir, name), { recursive: true, force: true }); } catch (e) {}
   }
 
   handleFromApp("update:install", async () => {

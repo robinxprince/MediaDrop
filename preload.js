@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("api", {
+  platform: process.platform,
+
   // Event Listeners from Main Process
   onDownloadProgress: (cb) => {
     ipcRenderer.on("download-progress", (_e, data) => cb(data));

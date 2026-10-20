@@ -3,24 +3,33 @@ MediaDrop bundles the following third-party software. Each remains under its own
 ----------------------------------------------------------------------
 Electron (https://www.electronjs.org) — MIT License
 Includes Chromium and Node.js; their licenses are in LICENSE and
-LICENSES.chromium.html inside MediaDrop.app/Contents/Frameworks.
+LICENSES.chromium.html inside MediaDrop.app/Contents/Frameworks (macOS)
+or the MediaDrop folder (Windows).
 
 ----------------------------------------------------------------------
 yt-dlp (https://github.com/yt-dlp/yt-dlp) — The Unlicense (public domain)
-Files: MediaDrop.app/Contents/Resources/yt-dlp (official yt-dlp_macos.zip build, which
-includes Python and other libraries; their licenses are in _internal/THIRD_PARTY_LICENSES.txt)
-MediaDrop installs newer official releases in ~/Library/Application Support/MediaDrop/yt-dlp.
+Files: MediaDrop.app/Contents/Resources/yt-dlp (official yt-dlp_macos.zip build) on macOS,
+resources\yt-dlp (official yt-dlp_win.zip build) on Windows. Both include Python and other
+libraries; their licenses are in _internal/THIRD_PARTY_LICENSES.txt.
+MediaDrop installs newer official releases in ~/Library/Application Support/MediaDrop/yt-dlp
+(macOS) or %APPDATA%\mediadrop\yt-dlp (Windows).
 
 ----------------------------------------------------------------------
 FFmpeg (https://ffmpeg.org) — GNU General Public License v3 (GPLv3)
-Files: MediaDrop.app/Contents/Resources/bin/ffmpeg, ffprobe (version 9.0.2)
+macOS files: MediaDrop.app/Contents/Resources/bin/ffmpeg, ffprobe (version 9.0.2)
 This is an unmodified static build by Martin Riedl (https://ffmpeg.martin-riedl.de),
 configured with --enable-gpl --enable-version3 (includes x264, x265 and others).
 
+Windows files: resources\bin\ffmpeg.exe, ffprobe.exe and the FFmpeg DLLs (version 9.0.2)
+This is the unmodified "full_build-shared" build by Gyan Doshi (https://www.gyan.dev/ffmpeg/builds),
+licensed GPLv3 (includes x264, x265 and others).
+
 Corresponding source code:
   FFmpeg 9.0.2 source:  https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
-  Build scripts and library sources used for this build:
+  Build scripts and library sources used for the macOS build:
                         https://git.martin-riedl.de/ffmpeg/build-script
+  Windows build:        https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2
+                        (its README.txt lists the libraries and versions it was built with)
 If those links are unavailable, contact the MediaDrop author for a copy of the
 source code, which will be provided for at least three years from distribution.
 

@@ -6,8 +6,8 @@ dist/
 *.zip
 
 # Downloaded tools: recreated by `npm run fetch-tools` (too large for git)
-vendor/bin/
-vendor/yt-dlp/
+vendor/darwin/
+vendor/win32/
 
 # macOS metadata
 .DS_Store

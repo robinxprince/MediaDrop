@@ -6,7 +6,7 @@ const path = nodeRequire && nodeRequire("path");
 
 // server.js (the bridge) writes each import here; the MediaDrop app keeps its settings in its own folder
 const RECENT_FILE = path && path.join(os.tmpdir(), "mediadrop-recent.json");
-const APP_SETTINGS_FILE = path && path.join(os.homedir(), "Library", "Application Support", "mediadrop", "mediadrop-settings.json");
+const APP_SETTINGS_FILE = MediaDropDesktop && MediaDropDesktop.appSettingsFile;
 const POLL_MS = 3000;
 
 const $ = (id) => document.getElementById(id);
@@ -134,9 +134,9 @@ async function openApp(site, query) {
   if (site && query) params.set("q", query);
   const show = () => appRequest(`/show${params.toString() ? "?" + params : ""}`);
   if (await isAppRunning()) return show();
-  if (!nodeRequire) return;
-  nodeRequire("child_process").execFile("/usr/bin/open", ["-a", "MediaDrop"], (err) => {
-    if (err) setStatus("attention", "MediaDrop isn't installed", "Run Install MediaDrop.command from the download, then try again.");
+  if (!MediaDropDesktop) return;
+  MediaDropDesktop.launchApp(() => {
+    setStatus("attention", "MediaDrop isn't installed", `Run ${MediaDropDesktop.installerName} from the download, then try again.`);
   });
   if (site && await waitForApp(20000)) show();
 }
@@ -282,8 +282,8 @@ function renderRecent() {
     when.dataset.time = item.time;
 
     li.append(makeThumb(item.file), words, when);
-    if (item.file && nodeRequire) {
-      li.addEventListener("click", () => nodeRequire("child_process").execFile("/usr/bin/open", ["-R", item.file], () => {}));
+    if (item.file && MediaDropDesktop) {
+      li.addEventListener("click", () => MediaDropDesktop.reveal(item.file));
     }
     return li;
   }));

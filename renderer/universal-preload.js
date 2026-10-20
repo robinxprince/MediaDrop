@@ -2,7 +2,7 @@
  * MediaDrop guest preload — attached to every <webview> by main.js (will-attach-webview).
  *
  * Runs sandboxed, in an isolated world: it shares the page DOM but not its JS globals.
- *  1. Mouse back/forward buttons → host navigation
+ *  1. Mouse back/forward buttons → host navigation; Chrome objects on Google sign-in
  *  2. Google Images → resolve the original full-size URL for right-click imports
  *  3. YouTube → format-picker button on every thumbnail and on watch pages
  */
@@ -22,6 +22,20 @@
   };
   window.addEventListener("mouseup", onMouseNav, true);
   window.addEventListener("auxclick", onMouseNav, true);
+
+  // Google refuses to sign in when window.chrome lacks the objects real Chrome has
+  // ("This browser or app may not be secure"). Add them on its sign-in page only:
+  // bot managers elsewhere (Akamai on Flaticon) flag exactly this kind of patching.
+  if (host === "accounts.google.com") {
+    webFrame.executeJavaScript(`(() => {
+      const c = window.chrome || (window.chrome = {});
+      const now = () => Date.now() / 1000;
+      c.app = c.app || { isInstalled: false, InstallState: { DISABLED: "disabled", INSTALLED: "installed", NOT_INSTALLED: "not_installed" }, RunningState: { CANNOT_RUN: "cannot_run", READY_TO_RUN: "ready_to_run", RUNNING: "running" }, getDetails: () => null, getIsInstalled: () => false };
+      c.runtime = c.runtime || {};
+      c.loadTimes = c.loadTimes || (() => ({ requestTime: now(), startLoadTime: now(), commitLoadTime: now(), finishDocumentLoadTime: now(), finishLoadTime: now(), firstPaintTime: now(), firstPaintAfterLoadTime: 0, navigationType: "Other", wasFetchedViaSpdy: true, wasNpnNegotiated: true, npnNegotiatedProtocol: "h2", wasAlternateProtocolAvailable: false, connectionInfo: "h2" }));
+      c.csi = c.csi || (() => ({ startE: Date.now(), onloadT: Date.now(), pageT: performance.now(), tran: 15 }));
+    })();`);
+  }
 
   // ── 2. GOOGLE IMAGES: ORIGINAL-QUALITY RESOLVER ────────────────────────────
   // Grid thumbnails are tiny data: URLs. Google ships each result's original URL in

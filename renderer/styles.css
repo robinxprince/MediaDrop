@@ -374,7 +374,7 @@ body {
   color: var(--accent-cyan);
 }
 
-.nav-cluster, .url-bar-container, .header-right, .header-yt-download-btn, .url-pin-btn {
+.nav-cluster, .url-bar-container, .header-right, .header-yt-download-btn {
   -webkit-app-region: no-drag;
 }
 
@@ -442,33 +442,6 @@ body {
   width: 100%;
 }
 
-.url-pin-btn {
-  background: rgba(0, 229, 255, 0.12);
-  border: 1px solid rgba(0, 229, 255, 0.35);
-  border-radius: var(--radius-sm);
-  color: var(--accent-cyan);
-  font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 8px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.url-pin-btn:hover {
-  background: var(--accent-cyan);
-  color: #04130a;
-  box-shadow: 0 0 12px var(--accent-cyan-glow);
-}
-
-.url-pin-btn.hidden {
-  display: none;
-}
-
 /* Header YouTube download button */
 .header-yt-download-btn {
   display: flex;
@@ -487,6 +460,9 @@ body {
 }
 .header-yt-download-btn:hover { background: var(--bg-surface-hover); border-color: #3a4560; }
 .header-yt-download-btn.hidden { display: none; }
+.header-pin-btn { border-color: rgba(0, 229, 255, 0.45); }
+.header-pin-btn:hover { border-color: var(--accent-cyan); }
+.header-pin-icon { width: 15px; height: 15px; border-radius: 3px; }
 
 /* Header Right */
 .header-right {
@@ -1251,86 +1227,11 @@ webview.active {
 .history-action:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
 .history-action svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-/* ── Clean Google Search Panel ───────────────────────────────────────────── */
-.google-search-card {
-  width: 500px;
-  max-width: 90vw;
-}
-
-.modal-header.compact {
-  padding-bottom: 12px;
-}
-
-.compact-body {
-  padding-top: 4px;
-}
-
-.clean-search-form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.clean-search-input-box {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-prominent);
-  border-radius: var(--radius-md);
-  padding: 0 16px;
-  height: 48px;
-  transition: all 0.2s ease;
-}
-
-.clean-search-input-box:focus-within {
-  border-color: var(--accent-cyan);
-  box-shadow: 0 0 16px rgba(0, 229, 255, 0.3);
-}
-
-.search-lens-icon {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.clean-search-input-box input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #fff;
-  font-family: var(--font-sans);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.clean-search-input-box input::placeholder {
-  color: var(--text-muted);
-  font-weight: 400;
-}
-
-.clean-search-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.clean-checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  user-select: none;
-}
-
-.clean-checkbox-label input[type="checkbox"] {
-  accent-color: var(--accent-cyan);
-  width: 15px;
-  height: 15px;
-  cursor: pointer;
-}
+/* ── Open a website ──────────────────────────────────────────────────────── */
+.add-site-card { width: 520px; }
+.add-site-body { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 20px; }
+.add-site-hint { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.add-site-hint strong { color: var(--text-secondary); font-weight: 600; }
 
 /* ── Settings dialog ─────────────────────────────────────────────────────── */
 .set-card {

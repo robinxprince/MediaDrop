@@ -400,8 +400,8 @@ function updatePinButtonVisibility() {
 
   if (!isPinned && !isBuiltIn) {
     btnPinCurrent.classList.remove("hidden");
-    const pinText = btnPinCurrent.querySelector("span");
-    if (pinText) pinText.textContent = `Pin ${curDomain}`;
+    btnPinCurrent.title = `Add ${curDomain} to the sidebar`;
+    document.getElementById("pinCurrentIcon").src = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(curDomain)}&sz=64`;
   } else {
     btnPinCurrent.classList.add("hidden");
   }
@@ -421,7 +421,7 @@ btnPinCurrent.onclick = () => {
   addBookmark(title, curUrl);
 };
 
-// ── CLEAN GOOGLE SEARCH PANEL ────────────────────────────────────────────────
+// ── OPEN A WEBSITE ───────────────────────────────────────────────────────────
 btnAddWebsite.onclick = () => {
   addSiteModal.classList.remove("hidden");
   siteUrlInput.value = "";
@@ -432,38 +432,19 @@ addSiteClose.onclick = () => {
   addSiteModal.classList.add("hidden");
 };
 
+// An address opens directly; anything else is searched on Google. Pinning happens from the header.
 addSiteForm.onsubmit = (e) => {
   e.preventDefault();
   let input = siteUrlInput.value.trim();
   if (!input) return;
-
-  const shouldPin = document.getElementById("chkPinToSidebar")?.checked ?? true;
   addSiteModal.classList.add("hidden");
-
-  // If input looks like a web address (e.g. pexels.com, https://...)
-  if (input.includes(".") && !input.includes(" ")) {
-    if (!input.startsWith("http://") && !input.startsWith("https://")) {
-      input = "https://" + input;
-    }
-    const domain = extractDomain(input);
-    const name = domain.split(".")[0];
-    const title = name.charAt(0).toUpperCase() + name.slice(1);
-    if (shouldPin) {
-      addBookmark(title, input);
-    } else {
-      views.google.loadURL(input);
-      switchTab("google");
-    }
+  if (/^[^\s]+\.[a-z]{2,}(\/\S*)?$/i.test(input.replace(/^https?:\/\//i, ""))) {
+    if (!/^https?:\/\//i.test(input)) input = "https://" + input;
   } else {
-    // Open as Google search query
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(input)}`;
-    if (shouldPin) {
-      addBookmark(`Search: ${input.slice(0, 16)}`, searchUrl);
-    } else {
-      views.google.loadURL(searchUrl);
-      switchTab("google");
-    }
+    input = `https://www.google.com/search?q=${encodeURIComponent(input)}`;
   }
+  views.google.loadURL(input);
+  switchTab("google");
 };
 
 // ── BOOKMARK RIGHT-CLICK CONTEXT MENU ────────────────────────────────────────

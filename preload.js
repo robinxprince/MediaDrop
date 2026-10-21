@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld("api", {
   onOpenSite: (cb) => {
     ipcRenderer.on("open-site", (_e, data) => cb(data));
   },
+  onOpenLink: (cb) => {
+    ipcRenderer.on("open-link", (_e, data) => cb(data));
+  },
   onClipboardLink: (cb) => {
     ipcRenderer.on("clipboard-link", (_e, data) => cb(data));
   },

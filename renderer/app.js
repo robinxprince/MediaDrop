@@ -130,6 +130,27 @@ const SEARCH_URLS = {
   envato: (q) => `https://elements.envato.com/stock-video/${encodeURIComponent(q.trim().toLowerCase().replace(/\s+/g, "-"))}`,
   google: (q) => `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}`
 };
+// Links a site opens in a new tab: YouTube goes to the YouTube tab (with its download button),
+// anything else opens in the tab it came from, so Back returns to Drive or the Doc
+window.api.onOpenLink(({ url, from } = {}) => {
+  let target = String(url || "");
+  try {
+    // Links inside Google Docs go through google.com/url?q=<the real link>
+    const u = new URL(target);
+    if (/(^|\.)google\.[a-z.]+$/.test(u.hostname) && u.pathname === "/url") target = u.searchParams.get("q") || u.searchParams.get("url") || target;
+  } catch (e) { return; }
+  if (!/^https?:\/\//i.test(target)) return;
+  if (/^https?:\/\/((www|m|music)\.)?(youtube\.com|youtu\.be)\//i.test(target)) {
+    switchTab("youtube");
+    views.youtube.loadURL(target);
+    return;
+  }
+  const source = Object.entries(views).find(([, wv]) => { try { return wv.getWebContentsId() === from; } catch (e) { return false; } });
+  if (!source) return;
+  switchTab(source[0]);
+  source[1].loadURL(target);
+});
+
 window.api.onOpenSite(({ site, query } = {}) => {
   if (!views[site]) return;
   switchTab(site);
@@ -210,6 +231,7 @@ function createCustomWebview(id, url) {
     wv.src = url;
     wv.homeUrl = url;
     wv.partition = "persist:mediadrop";
+    wv.setAttribute("allowpopups", ""); // new-tab links reach main.js, which opens them in MediaDrop
     viewport.appendChild(wv);
 
     const handleNav = (navUrl) => {

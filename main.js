@@ -271,6 +271,18 @@ function createWindow() {
     webPreferences.sandbox = true;
   });
 
+  // Sites in the tabs never get windows of their own. Links meant for a new tab (Drive opening a
+  // Doc, links inside Docs, target="_blank") are handed to the app, which opens them in MediaDrop.
+  // The tabs carry allowpopups only so these requests reach this handler.
+  mainWindow.webContents.on("did-attach-webview", (_e, contents) => {
+    contents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:\/\//i.test(url) && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("open-link", { url, from: contents.id });
+      }
+      return { action: "deny" };
+    });
+  });
+
   // The app window itself never navigates away or opens windows; sites live in the tabs
   mainWindow.webContents.on("will-navigate", (e) => e.preventDefault());
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));

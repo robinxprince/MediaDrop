@@ -7,6 +7,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const cp = require("child_process");
 
 const IS_WIN = process.argv[2] === "win";
@@ -39,6 +40,7 @@ if (IS_WIN) {
 // 4. Copy premiere-extension
 console.log("\n[4/6] Packaging Premiere Pro extension backend...");
 fs.cpSync(path.join(ROOT_DIR, "premiere-extension"), path.join(SETUP_DIR, "premiere-extension"), { recursive: true });
+signPanel(path.join(SETUP_DIR, "premiere-extension"));
 
 if (IS_WIN) packageWindowsInstaller();
 else packageMacInstaller();
@@ -62,6 +64,31 @@ const stats = fs.statSync(ZIP_PATH);
 const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
 
 console.log(`\nCreated ${ZIP_PATH} (${sizeMB} MB)`);
+
+// Signs the Premiere panel so Premiere loads it without CEP's PlayerDebugMode. The signature
+// (META-INF/signatures.xml) covers every file, so the installers copy the folder unchanged.
+// Certificate and tool live outside the repo; the certificate's password is in the Keychain (SHIPPING.md).
+function signPanel(dir) {
+  console.log("      Signing the Premiere panel...");
+  const signDir = path.join(os.homedir(), "Library", "Application Support", "MediaDrop-signing");
+  const tool = path.join(signDir, "ZXPSignCmd");
+  const cert = path.join(signDir, "MediaDrop-panel.p12");
+  if (process.platform !== "darwin" || !fs.existsSync(tool) || !fs.existsSync(cert)) {
+    throw new Error(`Panel signing needs ZXPSignCmd and MediaDrop-panel.p12 in ${signDir} on the Mac: see SHIPPING.md`);
+  }
+  const password = cp.execFileSync("security", ["find-generic-password", "-a", "mediadrop", "-s", "MediaDrop panel signing", "-w"]).toString().trim();
+  for (const entry of fs.readdirSync(dir, { recursive: true })) {
+    if (path.basename(entry) === ".DS_Store") fs.rmSync(path.join(dir, entry));
+  }
+  const zxp = path.join(DIST_DIR, "MediaDrop-panel.zxp");
+  fs.rmSync(zxp, { force: true });
+  // The timestamp keeps the signature valid after the certificate expires
+  cp.execFileSync(tool, ["-sign", dir, zxp, cert, password, "-tsa", "http://timestamp.digicert.com"], { stdio: ["ignore", "ignore", "inherit"] });
+  fs.rmSync(dir, { recursive: true, force: true });
+  cp.execFileSync("ditto", ["-x", "-k", zxp, dir]);
+  fs.rmSync(zxp);
+  cp.execFileSync(tool, ["-verify", dir], { stdio: ["ignore", "ignore", "inherit"] });
+}
 
 // 5. Windows: "Install MediaDrop.cmd" runs install.ps1 (scripts/windows), which the updater also runs
 function packageWindowsInstaller() {
@@ -140,7 +167,7 @@ echo "=================================================="
 echo ""
 
 # 1. Install MediaDrop.app to /Applications
-echo "[1/4] Installing MediaDrop to /Applications..."
+echo "[1/3] Installing MediaDrop to /Applications..."
 if [ -d "/Applications/MediaDrop.app" ]; then
   pkill -f "/Applications/MediaDrop.app/Contents/MacOS/MediaDrop" 2>/dev/null || true
   sleep 1
@@ -152,19 +179,12 @@ echo "  ✓ Copied MediaDrop.app to /Applications"
 touch "/Applications/MediaDrop.app"
 
 # 2. Clear quarantine attribute
-echo "[2/4] Setting macOS permissions..."
+echo "[2/3] Setting macOS permissions..."
 xattr -cr "/Applications/MediaDrop.app" 2>/dev/null || true
 echo "  ✓ Gatekeeper permissions cleared"
 
-# 3. Enable Adobe CEP PlayerDebugMode
-echo "[3/4] Configuring Adobe Premiere Pro CEP Extensions..."
-for v in 11 12 13 14 15 16 17 18 19 20; do
-  defaults write com.adobe.CSXS.$v PlayerDebugMode 1 2>/dev/null || true
-done
-echo "  ✓ Adobe CEP PlayerDebugMode enabled"
-
-# 4. Install Premiere Pro Extension
-echo "[4/4] Installing Premiere Pro Bridge..."
+# 3. Install the Premiere Pro panel (signed, so Premiere loads it without CEP's debug mode)
+echo "[3/3] Installing Premiere Pro Bridge..."
 CEP_DIR="$HOME/Library/Application Support/Adobe/CEP/extensions"
 mkdir -p "$CEP_DIR"
 TARGET_EXT="$CEP_DIR/MediaDropBackend"

@@ -3,7 +3,7 @@
 ## 1. Build a release
 
 ```bash
-# bump "version" in package.json first (e.g. 1.0.0 → 1.0.1)
+# bump "version" in package.json first (e.g. 1.0.0 → 1.0.1); both builds sign the Premiere panel (see "Signing the Premiere panel")
 npm run package        # macOS
 npm run package:win    # Windows (builds on the Mac; run `npm run fetch-tools -- win32` once first)
 ```
@@ -16,7 +16,7 @@ Output: `dist/MediaDrop-<version>-mac-apple-silicon.zip` (~210 MB). It contains:
 |---|---|
 | `MediaDrop.app` | The app. yt-dlp (in `Contents/Resources/yt-dlp`), ffmpeg and ffprobe (in `Contents/Resources/bin`) are inside it, so users need no Homebrew or Terminal setup |
 | `premiere-extension/` | The Premiere Pro bridge (CEP extension) |
-| `Install MediaDrop.command` | Installer: copies the app to /Applications, installs the extension, enables CEP debug mode |
+| `Install MediaDrop.command` | Installer: copies the app to /Applications and installs the signed extension |
 | `README.txt` | Install steps for the user |
 | `THIRD_PARTY_NOTICES.txt` | Licenses (FFmpeg is GPLv3, so this file must ship with it) |
 
@@ -30,7 +30,7 @@ Output: `dist/MediaDrop-<version>-windows-x64.zip` (~260 MB), built from Electro
 |---|---|
 | `MediaDrop/` | The app folder: `MediaDrop.exe`, with yt-dlp (`resources\yt-dlp`), ffmpeg, ffprobe and their DLLs (`resources\bin`) inside, and `uninstall.ps1` |
 | `premiere-extension/` | The Premiere Pro bridge (CEP extension), the same one macOS uses |
-| `Install MediaDrop.cmd` | Runs `install.ps1`: installs the app to `%LOCALAPPDATA%\Programs\MediaDrop` (no admin rights), installs the extension to `%APPDATA%\Adobe\CEP\extensions`, enables CEP debug mode (`HKCU\Software\Adobe\CSXS.*`), adds Start menu and desktop shortcuts and a Settings › Apps entry |
+| `Install MediaDrop.cmd` | Runs `install.ps1`: installs the app to `%LOCALAPPDATA%\Programs\MediaDrop` (no admin rights), installs the signed extension to `%APPDATA%\Adobe\CEP\extensions`, puts back any CEP debug mode setting an earlier version turned on, adds Start menu and desktop shortcuts and a Settings › Apps entry |
 | `README.txt`, `THIRD_PARTY_NOTICES.txt` | As on macOS |
 
 The installer scripts live in `scripts/windows/`. Keep them ASCII: Windows PowerShell 5.1 misreads UTF-8 without a BOM.
@@ -69,7 +69,16 @@ MediaDrop isn't signed with an Apple Developer ID or a Windows code-signing cert
 
 - **Gatekeeper:** macOS blocks `Install MediaDrop.command` the first time. Users go to System Settings → Privacy & Security → **Open Anyway**. README.txt explains this.
 - **SmartScreen (Windows):** Windows shows "Windows protected your PC" for `Install MediaDrop.cmd`; users click **More info → Run anyway**. The installer clears the downloaded-file mark on what it installs, so MediaDrop itself opens without a prompt. An Authenticode code-signing certificate (an EV one, or an OV one once it builds reputation) removes the warning; sign `MediaDrop.exe` with `signtool` after `scripts/build-win.js`.
-- **CEP debug mode:** the installer turns on `PlayerDebugMode` so Premiere loads the unsigned extension. This is normal for free extensions but is a dev setting.
+
+### Signing the Premiere panel
+
+Both builds sign `premiere-extension` with Adobe's free `ZXPSignCmd` and a self-signed certificate, so Premiere loads the panel without CEP's `PlayerDebugMode` (which would let it load any unsigned panel). `npm run package` and `npm run package:win` do it automatically and fail if signing isn't set up. On the release Mac:
+
+- `~/Library/Application Support/MediaDrop-signing/ZXPSignCmd`: version 4.1.3 for macOS from [Adobe-CEP/CEP-Resources](https://github.com/Adobe-CEP/CEP-Resources/tree/master/ZXPSignCMD) (Intel build, runs under Rosetta).
+- `~/Library/Application Support/MediaDrop-signing/MediaDrop-panel.p12`: the certificate. Back it up; a lost one is replaced with a new self-signed certificate (`ZXPSignCmd -selfSignedCert …`) and nothing else changes.
+- The certificate's password is in the login Keychain as "MediaDrop panel signing" (account `mediadrop`), never in the repo.
+
+The signature covers every file, so don't edit the installed panel; change `premiere-extension/` and rebuild. `npm run install-extension` (development) still uses debug mode, because the source folder isn't signed.
 
 ## 5. Remove the warnings (optional, $99/year)
 
@@ -77,7 +86,6 @@ MediaDrop isn't signed with an Apple Developer ID or a Windows code-signing cert
 2. Sign the app with the hardened runtime and Electron's entitlements (`allow-jit`, `allow-unsigned-executable-memory`, `disable-library-validation`). Sign the binaries in `Contents/Resources/bin` too.
 3. Replace the `.command` installer with a signed `.pkg` (`pkgbuild` + `productbuild --sign "Developer ID Installer: …"`) that installs both the app and the extension.
 4. Notarize with `xcrun notarytool submit … --wait`, then `xcrun stapler staple`.
-5. Sign the extension as a `.zxp` with Adobe's `ZXPSignCmd`, so PlayerDebugMode is no longer needed.
 
 The result: users double-click and it opens, with no security prompts.
 

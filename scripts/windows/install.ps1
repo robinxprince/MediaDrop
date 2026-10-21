@@ -42,7 +42,9 @@ try {
   foreach ($dir in $staged, $previous) { if (Test-Path $dir) { Invoke-WithRetry { Remove-Item $dir -Recurse -Force } } }
   New-Item (Split-Path $appDir) -ItemType Directory -Force | Out-Null
   Copy-Item (Join-Path $src "MediaDrop") $staged -Recurse
-  # Files unzipped from a download carry the "from the internet" mark; clear it like xattr does on macOS
+  # Files extracted from a downloaded zip carry the "from the internet" mark, which makes Windows warn
+  # again every time MediaDrop starts. Clear it on this package's own app files only, which the person
+  # just chose to install (updates arrive checksum-verified and unmarked). This is not a safety check.
   Get-ChildItem $staged -Recurse -File | Unblock-File
   if (Test-Path $appDir) { Invoke-WithRetry { Rename-Item $appDir $previous } }
   try {
@@ -54,14 +56,24 @@ try {
   if (Test-Path $previous) { Remove-Item $previous -Recurse -Force -ErrorAction SilentlyContinue }
   Write-Host "  OK  MediaDrop installed"
 
-  # 2. Premiere loads unsigned CEP panels only with PlayerDebugMode on
+  # 2. The panel is signed now, so Premiere loads it without CEP's PlayerDebugMode. Earlier
+  # versions turned debug mode on and kept the original values: put those back, as uninstall.ps1
+  # would, leaving any value someone changed since then as they set it.
   Write-Host "[2/4] Configuring Adobe Premiere Pro CEP extensions"
-  foreach ($v in 11..20) {
-    $key = "HKCU:\Software\Adobe\CSXS.$v"
-    if (-not (Test-Path $key)) { New-Item $key -Force | Out-Null }
-    Set-ItemProperty $key -Name PlayerDebugMode -Value "1"
+  $backupKey = "HKCU:\Software\MediaDrop\CEPDebugMode"
+  if (Test-Path $backupKey) {
+    $backup = Get-ItemProperty $backupKey
+    foreach ($name in $backup.PSObject.Properties.Name -match '^CSXS\.\d+$') {
+      $key = "HKCU:\Software\Adobe\$name"
+      if ((Get-ItemProperty $key -Name PlayerDebugMode -ErrorAction SilentlyContinue).PlayerDebugMode -ne "1") { continue }
+      if ($backup.$name -eq "") { Remove-ItemProperty $key -Name PlayerDebugMode -ErrorAction SilentlyContinue }
+      else { Set-ItemProperty $key -Name PlayerDebugMode -Value $backup.$name }
+    }
+    Remove-Item $backupKey -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "  OK  CEP debug mode put back as it was before MediaDrop"
+  } else {
+    Write-Host "  OK  Nothing to change"
   }
-  Write-Host "  OK  CEP PlayerDebugMode enabled"
 
   # 3. Premiere Pro panel
   Write-Host "[3/4] Installing the Premiere Pro bridge"
@@ -70,7 +82,6 @@ try {
   New-Item $cepDir -ItemType Directory -Force | Out-Null
   if (Test-Path $extDir) { Invoke-WithRetry { Remove-Item $extDir -Recurse -Force } }
   Copy-Item (Join-Path $src "premiere-extension") $extDir -Recurse
-  Get-ChildItem $extDir -Recurse -File | Unblock-File
   Write-Host "  OK  Premiere Pro panel installed to $extDir"
 
   # 4. Shortcuts and the Settings > Apps entry

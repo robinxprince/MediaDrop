@@ -17,14 +17,11 @@ if (IS_WIN) {
 const sidebar = document.getElementById("sidebar");
 const btnHamburger = document.getElementById("btnHamburger");
 
-const views = {
-  envato: document.getElementById("view-envato"),
-  youtube: document.getElementById("view-youtube"),
-  google: document.getElementById("view-google")
-};
+// The site tabs that are loaded right now, by tab name (see "SITE TABS" below)
+const views = {};
 
-let activeTabName = "envato";
-let activeView = views.envato;
+let activeTabName = "";
+let activeView = null;
 
 const urlDisplay = document.getElementById("urlDisplay");
 const btnHeaderYtDownload = document.getElementById("btnHeaderYtDownload");
@@ -87,6 +84,8 @@ btnHamburger.addEventListener("click", () => {
 // "search" is the Search panel; "explore" is a site picked in it, shown under the same search header
 function switchTab(targetTab) {
   if (targetTab === activeTabName && (views[targetTab] || targetTab === "search")) return;
+  if (!views[targetTab] && tabHome(targetTab)) openView(targetTab);
+  tabLastUsed[targetTab] = Date.now();
 
   // Unset active class on all sidebar buttons
   document.querySelectorAll(".sidebar-nav .nav-item").forEach(n => n.classList.remove("active"));
@@ -140,21 +139,14 @@ window.api.onOpenLink(({ url, from } = {}) => {
     if (/(^|\.)google\.[a-z.]+$/.test(u.hostname) && u.pathname === "/url") target = u.searchParams.get("q") || u.searchParams.get("url") || target;
   } catch (e) { return; }
   if (!/^https?:\/\//i.test(target)) return;
-  if (/^https?:\/\/((www|m|music)\.)?(youtube\.com|youtu\.be)\//i.test(target)) {
-    switchTab("youtube");
-    views.youtube.loadURL(target);
-    return;
-  }
+  if (/^https?:\/\/((www|m|music)\.)?(youtube\.com|youtu\.be)\//i.test(target)) return showSite("youtube", target);
   const source = Object.entries(views).find(([, wv]) => { try { return wv.getWebContentsId() === from; } catch (e) { return false; } });
-  if (!source) return;
-  switchTab(source[0]);
-  source[1].loadURL(target);
+  if (source) showSite(source[0], target);
 });
 
 window.api.onOpenSite(({ site, query } = {}) => {
-  if (!views[site]) return;
-  switchTab(site);
-  if (query) views[site].loadURL(SEARCH_URLS[site](query));
+  if (!SEARCH_URLS[site]) return;
+  showSite(site, query ? SEARCH_URLS[site](query) : undefined);
 });
 
 // Sidebar bottom utilities
@@ -223,55 +215,111 @@ function extractDomain(url) {
 }
 
 
-function createCustomWebview(id, url) {
-  let wv = document.getElementById(`view-${id}`);
-  if (!wv) {
-    wv = document.createElement("webview");
-    wv.id = `view-${id}`;
-    wv.src = url;
-    wv.homeUrl = url;
-    wv.partition = "persist:mediadrop";
-    wv.setAttribute("allowpopups", ""); // new-tab links reach main.js, which opens them in MediaDrop
-    viewport.appendChild(wv);
+// ── SITE TABS: loaded when first opened, unloaded when idle ─────────────────
+// Every site is a full web page in its own process (100–400 MB each), so only the tabs in use stay
+// loaded. An unloaded tab keeps its address and reloads there when opened again.
+const BUILT_IN_HOMES = { envato: "https://elements.envato.com/", youtube: "https://www.youtube.com/", google: "https://www.google.com/" };
+const TAB_IDLE_MS = 10 * 60 * 1000; // unload a hidden tab after 10 minutes unused
+const MAX_LOADED_TABS = 4;           // and keep at most this many loaded
+const unloadedUrls = {};
+const tabLastUsed = {};
 
-    const handleNav = (navUrl) => {
-      if (wv === activeView) {
-        urlDisplay.value = navUrl || "";
-        updateYouTubeControls();
-        updatePinButtonVisibility();
-        updateNavButtonsState();
-      }
-    };
+function tabHome(id) {
+  if (BUILT_IN_HOMES[id]) return BUILT_IN_HOMES[id];
+  if (id === "explore") return unloadedUrls.explore || "";
+  const bm = customBookmarks.find((b) => b.id === id);
+  return bm ? bm.url : "";
+}
 
-    wv.addEventListener("did-navigate", (e) => handleNav(e.url));
-    wv.addEventListener("did-navigate-in-page", (e) => handleNav(e.url));
-    wv.addEventListener("dom-ready", () => {
-      if (wv === activeView) updateNavButtonsState();
-    });
-    wv.addEventListener("ipc-message", handleGuestMessage);
-    wv.addEventListener("page-title-updated", (e) => {
-      if (wv === activeView) {
-        updatePinButtonVisibility();
-        updateNavButtonsState();
-      }
-      const bm = customBookmarks.find(b => b.id === id);
-      if (bm && (!bm.title || bm.title === bm.domain)) {
-        bm.title = e.title.slice(0, 24);
-        saveBookmarks(customBookmarks);
-        renderCustomTabs();
-      }
-    });
+// Creates the tab's webview if it isn't loaded: at `url`, where it was left, or at its home page
+function openView(id, url) {
+  if (views[id]) return views[id];
+  const wv = document.createElement("webview");
+  wv.id = `view-${id}`;
+  wv.src = url || unloadedUrls[id] || tabHome(id);
+  wv.homeUrl = (id === "explore" ? "" : tabHome(id)) || wv.src;
+  wv.partition = "persist:mediadrop";
+  wv.setAttribute("allowpopups", ""); // new-tab links reach main.js, which opens them in MediaDrop
+  delete unloadedUrls[id];
 
-    views[id] = wv;
-  }
+  const handleNav = (navUrl) => {
+    if (wv === activeView) {
+      urlDisplay.value = navUrl || "";
+      updateYouTubeControls();
+      updatePinButtonVisibility();
+      updateNavButtonsState();
+    }
+  };
+  wv.addEventListener("did-navigate", (e) => handleNav(e.url));
+  wv.addEventListener("did-navigate-in-page", (e) => handleNav(e.url));
+  wv.addEventListener("dom-ready", () => {
+    if (wv === activeView) updateNavButtonsState();
+  });
+  wv.addEventListener("ipc-message", handleGuestMessage);
+  wv.addEventListener("page-title-updated", (e) => {
+    if (wv === activeView) {
+      updateYouTubeControls();
+      updatePinButtonVisibility();
+      updateNavButtonsState();
+    }
+    const bm = customBookmarks.find(b => b.id === id);
+    if (bm && (!bm.title || bm.title === bm.domain)) {
+      bm.title = e.title.slice(0, 24);
+      saveBookmarks(customBookmarks);
+      renderCustomTabs();
+    }
+  });
+
+  viewport.appendChild(wv);
+  views[id] = wv;
+  tabLastUsed[id] = Date.now();
+  unloadExtraTabs();
   return wv;
 }
+
+// Shows a site tab, optionally at a new address
+function showSite(id, url) {
+  const loaded = !!views[id];
+  const wv = openView(id, url);
+  switchTab(id);
+  if (url && loaded) wv.loadURL(url);
+  return wv;
+}
+
+function unloadTab(id) {
+  const wv = views[id];
+  if (!wv) return;
+  try { unloadedUrls[id] = wv.getURL() || wv.src; } catch (e) { unloadedUrls[id] = wv.src; }
+  wv.remove();
+  delete views[id];
+}
+
+// A tab can go if it's hidden, not playing sound, and no browser download is running
+function canUnload(id) {
+  if (id === activeTabName || activeDownloads.size) return false;
+  try { return !views[id].isCurrentlyAudible(); } catch (e) { return true; }
+}
+
+function unloadExtraTabs() {
+  const loaded = Object.keys(views).sort((a, b) => (tabLastUsed[a] || 0) - (tabLastUsed[b] || 0));
+  let extra = loaded.length - MAX_LOADED_TABS;
+  for (const id of loaded) {
+    if (extra <= 0) break;
+    if (canUnload(id)) { unloadTab(id); extra--; }
+  }
+}
+
+setInterval(() => {
+  const now = Date.now();
+  Object.keys(views).forEach((id) => {
+    if (now - (tabLastUsed[id] || 0) > TAB_IDLE_MS && canUnload(id)) unloadTab(id);
+  });
+}, 60 * 1000);
 
 function renderCustomTabs() {
   customTabsNav.innerHTML = "";
 
   customBookmarks.forEach(bm => {
-    createCustomWebview(bm.id, bm.url);
 
     const btn = document.createElement("button");
     btn.className = `nav-item custom-tab ${activeTabName === bm.id ? "active" : ""}`;
@@ -392,9 +440,8 @@ function removeBookmark(id) {
   customBookmarks = customBookmarks.filter(b => b.id !== id);
   saveBookmarks(customBookmarks);
 
-  const wv = document.getElementById(`view-${id}`);
-  if (wv) wv.remove();
-  delete views[id];
+  unloadTab(id);
+  delete unloadedUrls[id];
 
   renderCustomTabs();
 
@@ -465,8 +512,7 @@ addSiteForm.onsubmit = (e) => {
   } else {
     input = `https://www.google.com/search?q=${encodeURIComponent(input)}`;
   }
-  views.google.loadURL(input);
-  switchTab("google");
+  showSite("google", input);
 };
 
 // ── BOOKMARK RIGHT-CLICK CONTEXT MENU ────────────────────────────────────────
@@ -814,40 +860,6 @@ function handleGuestMessage(event) {
   }
 }
 
-// ── WEBVIEW SETUP & NAVIGATION EVENTS ────────────────────────────────────────
-function setupWebviews() {
-  views.envato.homeUrl = "https://elements.envato.com/";
-  views.youtube.homeUrl = "https://www.youtube.com/";
-  views.google.homeUrl = "https://www.google.com/";
-
-  Object.entries(views).forEach(([name, webview]) => {
-    const handleNav = (url) => {
-      if (webview === activeView) {
-        urlDisplay.value = url || "";
-        updateYouTubeControls();
-        updatePinButtonVisibility();
-        updateNavButtonsState();
-      }
-    };
-
-    webview.addEventListener("did-navigate", (e) => handleNav(e.url));
-    webview.addEventListener("did-navigate-in-page", (e) => handleNav(e.url));
-    webview.addEventListener("dom-ready", () => {
-      if (webview === activeView) updateNavButtonsState();
-    });
-
-    webview.addEventListener("page-title-updated", () => {
-      updateYouTubeControls();
-      updatePinButtonVisibility();
-      if (webview === activeView) updateNavButtonsState();
-    });
-
-    webview.addEventListener("ipc-message", handleGuestMessage);
-  });
-
-  renderCustomTabs();
-}
-
 // ── BROWSER CONTROLS & MOUSE BUTTON NAVIGATION ───────────────────────────────
 let lastNavTime = 0;
 
@@ -995,6 +1007,7 @@ function updateYouTubeControls(explicitUrl) {
 
 // Polling interval ensures YouTube SPA pushState changes are caught instantly
 setInterval(() => {
+  if (document.hidden) return;
   if (activeTabName === "youtube" || (urlDisplay && (urlDisplay.value.includes("youtube.com") || urlDisplay.value.includes("youtu.be")))) {
     updateYouTubeControls();
   }
@@ -2076,8 +2089,7 @@ function getItem(item, showOptions = false) {
 
 function openItem(item) {
   if (item.site === "YouTube") {
-    switchTab("youtube");
-    views.youtube.loadURL(item.url);
+    showSite("youtube", item.url);
   } else if (item.page) {
     search.site = "page";
     exploreUrl(item.page);
@@ -2169,11 +2181,7 @@ function togglePreview(item, btn) {
 
 // ── A site shown inside Search, under the search header ──
 function exploreUrl(url) {
-  const existing = views.explore;
-  const wv = createCustomWebview("explore", url);
-  if (existing) wv.loadURL(url);
-  wv.homeUrl = url;
-  switchTab("explore");
+  showSite("explore", url).homeUrl = url;
   stopPreview();
 }
 
@@ -2304,6 +2312,7 @@ window.addEventListener("keydown", (e) => {
 
 // Initialize
 updateYtButtonTitle();
-setupWebviews();
+renderCustomTabs();
+switchTab("envato");
 updateYouTubeControls();
 loadAppSettings();

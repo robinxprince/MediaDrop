@@ -2272,25 +2272,32 @@ async function startClipboardWatch() {
   const read = async () => { try { return String(await clipboard.readText()).trim(); } catch (e) { return ""; } };
   let last = await read(); // don't offer what was already copied before launch
   setInterval(async () => {
+    if (currentSettings.clipboardOffers === false) return;
     const text = await read();
     if (text === last) return;
     last = text;
-    if (currentSettings.clipboardOffers === false || text.length > 2000) return;
+    if (text.length > 2000) return;
     const kind = classifyLink(text);
     if (kind && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("clipboard-link", { url: text, kind });
   }, 1000);
 }
 
+// Every 3 s while MediaDrop is in front, every 10 s otherwise
 function startBridgeMonitor() {
-  setInterval(async () => {
-    const status = await premiereSnapshot();
-    lastPremiereOnlineState = status.online;
-    if (status.project && pendingImports.length) {
-      await flushPendingImports();
-      status.pending = pendingImports.length;
-    }
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("premiere-status", status);
-  }, 3000);
+  const tick = async () => {
+    try {
+      const status = await premiereSnapshot();
+      lastPremiereOnlineState = status.online;
+      if (status.project && pendingImports.length) {
+        await flushPendingImports();
+        status.pending = pendingImports.length;
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("premiere-status", status);
+    } catch (e) {}
+    const inFront = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused();
+    setTimeout(tick, inFront ? 3000 : 10000);
+  };
+  setTimeout(tick, 3000);
 }
 
 // ── UPDATES ──────────────────────────────────────────────────────────────────

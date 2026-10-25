@@ -55,8 +55,6 @@
           <CEFCommandLine>
             <Parameter>--enable-nodejs</Parameter>
             <Parameter>--mixed-context</Parameter>
-            <!-- On some Windows graphics drivers the panel draws as garbled lines; it needs no GPU -->
-            <Parameter>--disable-gpu</Parameter>
           </CEFCommandLine>
         </Resources>
         <Lifecycle>

@@ -1,6 +1,9 @@
-# Removes MediaDrop for this user; run from Settings > Apps > MediaDrop > Uninstall.
-# Downloaded media, settings and saved logins (%APPDATA%\mediadrop) are kept.
+# Removes MediaDrop for this user. Run from Settings > Apps > MediaDrop > Uninstall, from
+# "Uninstall MediaDrop.cmd" in the release zip (which asks about -RemoveData), or from MediaDrop's
+# Settings > Uninstall. Downloaded media is always kept; settings and saved logins
+# (%APPDATA%\mediadrop) only go with -RemoveData.
 # Keep this file ASCII: Windows PowerShell 5.1 reads scripts without a BOM as ANSI.
+param([switch]$RemoveData)
 $appDir = $PSScriptRoot
 Set-Location $env:TEMP
 
@@ -11,9 +14,12 @@ if (-not $appDir -or -not [string]::Equals($appDir.TrimEnd("\"), $expected, [Str
   exit 1
 }
 
-Get-Process -ErrorAction SilentlyContinue |
-  Where-Object { $_.Path -and $_.Path.StartsWith("$appDir\", [StringComparison]::OrdinalIgnoreCase) } |
-  Stop-Process -Force -ErrorAction SilentlyContinue
+# MediaDrop's Uninstall button quits it before this runs; give it a moment, then close what's left
+function Get-AppProcesses {
+  Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith("$appDir\", [StringComparison]::OrdinalIgnoreCase) }
+}
+@(Get-AppProcesses) | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+Get-AppProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 1
 
 $paths = @(
@@ -23,8 +29,13 @@ $paths = @(
   "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\MediaDrop",
   $appDir
 )
+if ($RemoveData) { $paths += Join-Path $env:APPDATA "mediadrop" }
 foreach ($path in $paths) {
-  if (Test-Path $path) { Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue }
+  # Windows releases file handles a moment after a process exits, so retry briefly
+  for ($i = 0; $i -lt 10 -and (Test-Path $path); $i++) {
+    Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path $path) { Start-Sleep -Milliseconds 500 }
+  }
 }
 
 # Put back Adobe's PlayerDebugMode where MediaDrop turned it on and it's still on;

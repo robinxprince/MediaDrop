@@ -2317,6 +2317,12 @@ function compareVersions(a, b) {
   return 0;
 }
 
+// True when this is the copy the installer put in place, which updates and uninstalls act on
+function isInstalledCopy() {
+  const prefix = INSTALLED_APP + path.sep;
+  return IS_WIN ? process.execPath.toLowerCase().startsWith(prefix.toLowerCase()) : process.execPath.startsWith(prefix);
+}
+
 async function checkForUpdate() {
   try {
     const res = await net.fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
@@ -2385,9 +2391,7 @@ async function installUpdate() {
   const update = availableUpdate;
   if (!update) return { ok: false, error: "No update is available." };
   if (updateInProgress) return { ok: false, error: "The update is already downloading." };
-  const installedPrefix = INSTALLED_APP + path.sep;
-  const execPath = IS_WIN ? process.execPath.toLowerCase() : process.execPath;
-  if (!execPath.startsWith(IS_WIN ? installedPrefix.toLowerCase() : installedPrefix)) {
+  if (!isInstalledCopy()) {
     return { ok: false, error: IS_WIN
       ? "Updates install only when MediaDrop was installed with Install MediaDrop.cmd."
       : "Updates install only when MediaDrop runs from the Applications folder." };
@@ -2424,6 +2428,43 @@ async function installUpdate() {
     console.error("[MediaDrop] Update failed:", e);
     return { ok: false, error: e.message };
   }
+}
+
+// ── UNINSTALL ────────────────────────────────────────────────────────────────
+// Runs the uninstaller that ships inside the app (scripts/mac/uninstall.command, scripts/windows/uninstall.ps1).
+// It outlives this process: it waits for MediaDrop to quit, then removes the app and the Premiere panel.
+function setupUninstallHandler() {
+  handleFromApp("app:uninstall", async () => {
+    const script = IS_WIN ? path.join(INSTALLED_APP, "uninstall.ps1") : path.join(process.resourcesPath, "uninstall.command");
+    if (!isInstalledCopy() || !fs.existsSync(script)) {
+      await dialog.showMessageBox(mainWindow, {
+        type: "info",
+        message: "This copy of MediaDrop can't uninstall itself",
+        detail: IS_WIN
+          ? "Uninstall works on the copy that Install MediaDrop.cmd installed."
+          : "Uninstall works on the copy in the Applications folder."
+      });
+      return { ok: false };
+    }
+    const { response, checkboxChecked } = await dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      message: "Uninstall MediaDrop?",
+      detail: `MediaDrop and its Premiere Pro panel are removed. Your downloaded media stays in ${displayPath(getDownloadDir())}. Restart Premiere Pro afterwards.`,
+      checkboxLabel: "Also delete settings and saved logins",
+      buttons: ["Uninstall", "Cancel"],
+      defaultId: 1,
+      cancelId: 1
+    });
+    if (response !== 0) return { ok: false, cancelled: true };
+
+    const [runner, args] = IS_WIN
+      ? [path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, ...(checkboxChecked ? ["-RemoveData"] : [])]]
+      : ["/bin/bash", [script, checkboxChecked ? "--remove-data" : "--keep-data"]];
+    cp.spawn(runner, args, { detached: true, windowsHide: true, stdio: "ignore", cwd: app.getPath("temp") }).unref();
+    setTimeout(() => app.quit(), 300);
+    return { ok: true };
+  });
 }
 
 function setupUpdateHandlers() {
@@ -2465,6 +2506,7 @@ app.whenReady().then(() => {
   updateYtDlp();
   setupIpcHandlers();
   setupUpdateHandlers();
+  setupUninstallHandler();
   setupSearchHandlers();
   startBridgeMonitor();
   startClipboardWatch();

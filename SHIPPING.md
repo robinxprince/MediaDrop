@@ -17,6 +17,7 @@ Output: `dist/MediaDrop-<version>-mac-apple-silicon.zip` (~210 MB). It contains:
 | `MediaDrop.app` | The app. yt-dlp (in `Contents/Resources/yt-dlp`), ffmpeg and ffprobe (in `Contents/Resources/bin`) are inside it, so users need no Homebrew or Terminal setup |
 | `premiere-extension/` | The Premiere Pro bridge (CEP extension) |
 | `Install MediaDrop.command` | Installer: copies the app to /Applications and installs the signed extension |
+| `Uninstall MediaDrop.command` | Removes the app and the extension, asks whether to delete settings and logins too (`scripts/mac/uninstall.command`; the same script is in `Contents/Resources` for Settings › Uninstall) |
 | `README.txt` | Install steps for the user |
 | `THIRD_PARTY_NOTICES.txt` | Licenses (FFmpeg is GPLv3, so this file must ship with it) |
 
@@ -31,6 +32,7 @@ Output: `dist/MediaDrop-<version>-windows-x64.zip` (~260 MB), built from Electro
 | `MediaDrop/` | The app folder: `MediaDrop.exe`, with yt-dlp (`resources\yt-dlp`), ffmpeg, ffprobe and their DLLs (`resources\bin`) inside, and `uninstall.ps1` |
 | `premiere-extension/` | The Premiere Pro bridge (CEP extension), the same one macOS uses |
 | `Install MediaDrop.cmd` | Runs `install.ps1`: installs the app to `%LOCALAPPDATA%\Programs\MediaDrop` (no admin rights), installs the signed extension to `%APPDATA%\Adobe\CEP\extensions`, puts back any CEP debug mode setting an earlier version turned on, adds Start menu and desktop shortcuts and a Settings › Apps entry |
+| `Uninstall MediaDrop.cmd` | Runs the installed `uninstall.ps1` (also run by Settings › Apps and MediaDrop's Settings › Uninstall), asking whether to delete settings and logins too |
 | `README.txt`, `THIRD_PARTY_NOTICES.txt` | As on macOS |
 
 The installer scripts live in `scripts/windows/`. Keep them ASCII: Windows PowerShell 5.1 misreads UTF-8 without a BOM.

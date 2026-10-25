@@ -97,6 +97,8 @@ function packageWindowsInstaller() {
   // cmd.exe expects Windows line endings
   const cmd = fs.readFileSync(path.join(__dirname, "windows", "Install MediaDrop.cmd"), "utf-8").replace(/\r?\n/g, "\r\n");
   fs.writeFileSync(path.join(SETUP_DIR, "Install MediaDrop.cmd"), cmd);
+  const uninstallCmd = fs.readFileSync(path.join(__dirname, "windows", "Uninstall MediaDrop.cmd"), "utf-8").replace(/\r?\n/g, "\r\n");
+  fs.writeFileSync(path.join(SETUP_DIR, "Uninstall MediaDrop.cmd"), uninstallCmd);
 
   const readmeContent = `=======================================================
         MediaDrop ${VERSION} - Install Guide (Windows)
@@ -136,8 +138,9 @@ TIPS
     when Premiere Pro isn't open.
   - When a new version is out, an "Update" button appears in
     the top bar. Click it to install the update in one step.
-  - To uninstall: Settings > Apps > Installed apps > MediaDrop.
-    Your downloads are kept.
+  - To uninstall: MediaDrop Settings > Uninstall, Windows
+    Settings > Apps > Installed apps > MediaDrop, or double-click
+    "Uninstall MediaDrop.cmd". Your downloaded media is kept.
 
 SIGNING IN (optional)
   You only need to sign in to YouTube for age-restricted or
@@ -217,6 +220,8 @@ echo "You can close this Terminal window now."
   const installerPath = path.join(SETUP_DIR, "Install MediaDrop.command");
   fs.writeFileSync(installerPath, installerScript, { mode: 0o755 });
   cp.execSync(`chmod +x "${installerPath}"`);
+  fs.copyFileSync(path.join(__dirname, "mac", "uninstall.command"), path.join(SETUP_DIR, "Uninstall MediaDrop.command"));
+  fs.chmodSync(path.join(SETUP_DIR, "Uninstall MediaDrop.command"), 0o755);
 
   // Create README.txt
   const readmeContent = `=======================================================
@@ -254,6 +259,8 @@ TIPS
     when Premiere Pro isn't open.
   - When a new version is out, an "Update" button appears in
     the top bar. Click it to install the update in one step.
+  - To uninstall: MediaDrop Settings > Uninstall, or double-click
+    "Uninstall MediaDrop.command". Your downloaded media is kept.
 
 SIGNING IN (optional)
   You only need to sign in to YouTube for age-restricted or

@@ -747,6 +747,9 @@ btnBrowseFolder.onclick = async () => {
 
 btnOpenFolder.onclick = () => window.api.openDownloadsFolder();
 
+// The main process asks for confirmation, then quits while the uninstaller runs
+document.getElementById("btnUninstall").onclick = () => window.api.uninstall();
+
 btnResetHotkey.onclick = () => {
   appSettings.hotkey = DEFAULT_HOTKEY;
   stopRecordingHotkey();

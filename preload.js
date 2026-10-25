@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld("api", {
   startDrag: (filePath) => ipcRenderer.send("app:start-drag", filePath),
 
   installUpdate: () => ipcRenderer.invoke("update:install"),
+  uninstall: () => ipcRenderer.invoke("app:uninstall"),
 
   // Settings & Configuration
   getSettings: () => ipcRenderer.invoke("settings:get"),

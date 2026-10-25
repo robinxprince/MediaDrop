@@ -96,6 +96,9 @@ for (const name of ["bin", "yt-dlp"]) {
   else console.warn(`  ! vendor/darwin/${name} missing: run 'npm run fetch-tools' (falls back to Homebrew yt-dlp/ffmpeg)`);
 }
 fs.copyFileSync(path.join(ROOT_DIR, "vendor", "THIRD_PARTY_NOTICES.txt"), path.join(resourcesDir, "THIRD_PARTY_NOTICES.txt"));
+// Settings > Uninstall runs this
+fs.copyFileSync(path.join(ROOT_DIR, "scripts", "mac", "uninstall.command"), path.join(resourcesDir, "uninstall.command"));
+fs.chmodSync(path.join(resourcesDir, "uninstall.command"), 0o755);
 
 // Clean up any stale node_modules inside app directory (standalone app has zero external dependencies)
 const targetNodeModules = path.join(appDir, "node_modules");

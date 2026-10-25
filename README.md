@@ -22,6 +22,8 @@ Get the latest zip for your computer from **[Releases](https://github.com/robinx
 
 MediaDrop checks for new versions and shows an **Update** button in the top bar when one is out; it installs in one click.
 
+To uninstall, use **Settings → Uninstall** in MediaDrop, or double-click **Uninstall MediaDrop.command** (Mac) or **Uninstall MediaDrop.cmd** (Windows) from the download; on Windows it's also in **Settings › Apps**. MediaDrop and its Premiere panel are removed; your downloaded media is kept, and you choose whether settings and saved logins go too.
+
 ## Features
 
 - **Search every site:** one search fills tabs for videos, images, music, sound effects and GIFs from Mixkit, Flickr, Wikimedia Commons, YouTube and Tenor. Each result shows its site and whether it's copyright-free, free with credit, or copyrighted. Pick several and download them in one go, or open the same search on Pexels, Pixabay, Unsplash, Envato and more.

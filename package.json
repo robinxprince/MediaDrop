@@ -1,6 +1,6 @@
 {
   "name": "mediadrop",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Search stock media from many sites, browse Envato, YouTube and Google Images, and import straight into Adobe Premiere Pro",
   "main": "main.js",
   "scripts": {

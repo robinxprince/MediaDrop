@@ -428,10 +428,17 @@ function premiereErrorText(err) {
 // Downloads that finished while Premiere wasn't ready; imported as soon as a project is open
 const pendingImports = [];
 
+// One line on the waiting card: what to do, and that the import then happens by itself.
+// MediaDrop's hidden backend extension starts with Premiere, so opening Premiere is enough.
+const WAITING_TEXT = {
+  NO_PROJECT: "Open a project in Premiere Pro and it imports.",
+  ETIMEDOUT: "Premiere Pro is busy. It imports when it's free."
+};
+
 function queueImport(filePath, site, reason) {
   if (!pendingImports.some((p) => p.filePath === filePath)) pendingImports.push({ filePath, site });
-  const next = reason.code === "NO_PROJECT" ? "Open a project" : "Open Premiere Pro with the MediaDrop panel";
-  reportIngest(filePath, "waiting", `${premiereErrorText(reason)} ${next} and it imports automatically.`, { pending: pendingImports.length, site });
+  const text = WAITING_TEXT[reason.code] || "Open Premiere Pro and it imports.";
+  reportIngest(filePath, "waiting", text, { pending: pendingImports.length, site });
 }
 
 function postImport(payload) {

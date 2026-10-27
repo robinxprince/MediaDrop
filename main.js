@@ -402,7 +402,7 @@ function displayPath(p) {
 
 function reportIngest(filePath, type, msg, extra = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const titles = { success: "Imported to Premiere Pro", waiting: "Waiting for Premiere Pro", saved: "Download complete" };
+  const titles = { success: "Imported to Premiere Pro", waiting: "Downloaded, not imported yet", saved: "Download complete" };
   mainWindow.webContents.send("toast", {
     type,
     title: titles[type],
@@ -428,16 +428,16 @@ function premiereErrorText(err) {
 // Downloads that finished while Premiere wasn't ready; imported as soon as a project is open
 const pendingImports = [];
 
-// One line on the waiting card: what to do, and that the import then happens by itself.
+// One line on the waiting card: why it isn't imported, and that it imports by itself once it can.
 // MediaDrop's hidden backend extension starts with Premiere, so opening Premiere is enough.
 const WAITING_TEXT = {
-  NO_PROJECT: "Open a project in Premiere Pro and it imports.",
+  NO_PROJECT: "No project is open in Premiere Pro. It imports when you open one.",
   ETIMEDOUT: "Premiere Pro is busy. It imports when it's free."
 };
 
 function queueImport(filePath, site, reason) {
   if (!pendingImports.some((p) => p.filePath === filePath)) pendingImports.push({ filePath, site });
-  const text = WAITING_TEXT[reason.code] || "Open Premiere Pro and it imports.";
+  const text = WAITING_TEXT[reason.code] || "Premiere Pro isn't open. It imports when you open it.";
   reportIngest(filePath, "waiting", text, { pending: pendingImports.length, site });
 }
 
@@ -1143,6 +1143,7 @@ async function normalizeAndIngestMedia(filePath, originalFilename, downloadId) {
       const finalAudio = await new Promise((resolve) => {
         cp.execFile(getBinaryPath("ffmpeg"), ["-y", "-i", filePath, "-vn", "-c:a", "pcm_s16le", "-ar", "48000", outWav], { windowsHide: true }, (err) => {
           if (err) console.warn("[MediaDrop Normalizer] Audio conversion error:", err.message);
+          else try { fs.unlinkSync(filePath); } catch (e) {} // the WAV replaces it, as MP4 replaces a WebM
           resolve(err ? filePath : outWav);
         });
       });
@@ -1217,6 +1218,7 @@ async function normalizeAndIngestMedia(filePath, originalFilename, downloadId) {
 
       await convertImageToPng(filePath, outPng).then(() => {
         console.log(`[MediaDrop Normalizer] Converted ${ext} -> ${outPng}`);
+        try { fs.unlinkSync(filePath); } catch (e) {} // the PNG replaces it, as MP4 replaces a WebM
         return outPng;
       }, (err) => {
         console.warn("[MediaDrop Normalizer] Image conversion error:", err.message);

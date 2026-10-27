@@ -1982,7 +1982,6 @@ function renderSources() {
   searchSources.innerHTML =
     chip("all", ALL_ICON, "All results") +
     c.picks.map((name) => chip(`pick:${name}`, img(INLINE_SITES[name]), name, count(name))).join("") +
-    `<span class="sv-sources-sep" aria-hidden="true"></span>` +
     c.sites.map((id) => chip(`site:${id}`, img(SITES[id].domain), SITES[id].name)).join("");
   searchSources.querySelectorAll(".sv-source").forEach((btn) => { btn.onclick = () => pickSource(btn.dataset.key); });
 }

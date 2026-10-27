@@ -58,7 +58,8 @@
           </CEFCommandLine>
         </Resources>
         <Lifecycle>
-          <AutoVisible>false</AutoVisible>
+          <!-- Premiere on Windows keeps a panel that isn't AutoVisible hidden: the dock shows black -->
+          <AutoVisible>true</AutoVisible>
         </Lifecycle>
         <UI>
           <Type>Panel</Type>

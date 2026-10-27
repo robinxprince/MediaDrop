@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld("api", {
 
   installUpdate: () => ipcRenderer.invoke("update:install"),
   uninstall: () => ipcRenderer.invoke("app:uninstall"),
+  openFeedback: (kind) => ipcRenderer.invoke("app:feedback", kind),
 
   // Settings & Configuration
   getSettings: () => ipcRenderer.invoke("settings:get"),

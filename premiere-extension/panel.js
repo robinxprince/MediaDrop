@@ -52,8 +52,11 @@ function appRequest(urlPath) {
   });
 }
 
+let appVersion = "";
+
 async function isAppRunning() {
   const res = await appRequest("/ping");
+  if (res && res.version) appVersion = res.version;
   return !!(res && res.ok);
 }
 
@@ -165,6 +168,22 @@ searchInput.addEventListener("input", () => {
     btn.title = searchInput.value.trim() ? `Search "${searchInput.value.trim()}" on ${btn.textContent.trim()}` : `Open ${btn.textContent.trim()}`;
   });
 });
+
+// ── Bugs and feedback: the GitHub issue forms, with what the panel knows filled in ──
+function openFeedback(template) {
+  const params = new URLSearchParams({ template });
+  if (appVersion) params.set("version", appVersion);
+  if (template === "bug_report.yml") {
+    // The panel runs as x64 on Windows on ARM too; the processor name still says ARM
+    const arm = /^ARM/i.test(process.env.PROCESSOR_IDENTIFIER || "") ? "ARM" : os && os.arch();
+    if (os) params.set("system", `${process.platform === "win32" ? "Windows" : "macOS (Darwin)"} ${os.release()}, ${arm}`);
+    try { params.set("premiere", csi.getHostEnvironment().appVersion); } catch (e) {}
+  }
+  const url = "https://github.com/robinxprince/MediaDrop/issues/new?" + params;
+  if (csi) csi.openURLInDefaultBrowser(url);
+}
+$("btnReportBug").addEventListener("click", () => openFeedback("bug_report.yml"));
+$("btnSendFeedback").addEventListener("click", () => openFeedback("feedback.yml"));
 
 // ── Downloads in progress (read from the MediaDrop app) ─────────────────────
 function getDownloads() {

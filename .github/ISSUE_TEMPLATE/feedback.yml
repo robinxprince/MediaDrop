@@ -1,0 +1,16 @@
+name: Send feedback
+description: An idea, a site you'd like supported, or anything else about MediaDrop
+labels: [feedback]
+body:
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Your feedback
+      description: What would make MediaDrop better for you?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MediaDrop version
+      placeholder: "1.0.5"

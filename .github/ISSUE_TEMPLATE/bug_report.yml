@@ -1,0 +1,59 @@
+name: Report a bug
+description: Something in MediaDrop or its Premiere Pro panel doesn't work
+labels: [bug]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where is the problem?
+      options:
+        - Premiere Pro panel is black, blank or doesn't draw
+        - Downloads don't import into Premiere Pro
+        - Downloading or converting media
+        - Searching or browsing a site
+        - Installing, updating or uninstalling
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you expected, what you saw instead, and the steps that lead to it.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MediaDrop version
+      description: Filled in when you open this form from MediaDrop. Otherwise it's in the zip's name.
+      placeholder: "1.0.5"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Computer
+      description: Windows or macOS version, and whether it's a Parallels or other virtual machine.
+      placeholder: "Windows 11, NVIDIA RTX 3060"
+    validations:
+      required: true
+  - type: input
+    id: premiere
+    attributes:
+      label: Premiere Pro version
+      description: Help › About Premiere Pro.
+      placeholder: "26.5.2"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Panel logs
+      description: |
+        For panel problems, open Premiere, open the MediaDrop panel, quit Premiere, then attach these files:
+        - **Windows:** type `%TEMP%` in File Explorer's address bar; the files starting with `CEPHtmlEngine` and containing `mediadrop`, and `CEP12-PPRO.log`
+        - **Mac:** `~/Library/Logs/CSXS/`, the files containing `mediadrop`
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Paste or drag screenshots here.

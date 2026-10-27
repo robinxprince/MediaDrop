@@ -196,7 +196,7 @@ function startSurfaceServer() {
     if (req.url === "/ping") {
       // Lets the Premiere panel see that MediaDrop is running without bringing it forward
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
+      res.end(JSON.stringify({ ok: true, version: app.getVersion() }));
     } else if (req.url === "/downloads") {
       // What the Premiere panel shows under "Downloading"
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -2467,6 +2467,24 @@ function setupUninstallHandler() {
   });
 }
 
+// ── BUGS AND FEEDBACK ────────────────────────────────────────────────────────
+// Opens the GitHub issue forms (.github/ISSUE_TEMPLATE) in the browser, with the version and computer filled in
+const FEEDBACK_FORMS = { bug: "bug_report.yml", feedback: "feedback.yml" };
+
+function setupFeedbackHandler() {
+  handleFromApp("app:feedback", (event, kind) => {
+    const template = FEEDBACK_FORMS[kind];
+    if (!template) return { ok: false };
+    const os = IS_WIN ? `Windows ${require("os").release()}` : `macOS ${process.getSystemVersion()}`;
+    // Windows on ARM and Rosetta run the x64 build translated, which is worth knowing in a bug report
+    const system = `${os}, ${app.runningUnderARM64Translation ? "ARM running the x64 build" : process.arch}`;
+    const params = new URLSearchParams({ template, version: app.getVersion() });
+    if (kind === "bug") params.set("system", system);
+    shell.openExternal(`https://github.com/${UPDATE_REPO}/issues/new?${params}`);
+    return { ok: true };
+  });
+}
+
 function setupUpdateHandlers() {
   // The installer has finished by the time it reopens MediaDrop, so its files from the last update can go
   const tempDir = app.getPath("temp");
@@ -2507,6 +2525,7 @@ app.whenReady().then(() => {
   setupIpcHandlers();
   setupUpdateHandlers();
   setupUninstallHandler();
+  setupFeedbackHandler();
   setupSearchHandlers();
   startBridgeMonitor();
   startClipboardWatch();

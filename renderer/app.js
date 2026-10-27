@@ -1905,7 +1905,8 @@ const ICON = (d) => `<svg class="sv-tab-icon" viewBox="0 0 24 24" aria-hidden="t
 const COLLECTIONS = [
   { id: "video", label: "Videos", kind: "video", sources: ["mixkitVideo", "youtubeVideo"], picks: ["Mixkit", "YouTube"], sites: ["pexelsVideo", "pixabayVideo", "coverr", "envatoVideo"],
     icon: ICON('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z"/>') },
-  { id: "images", label: "Images", kind: "image", sources: ["openverseImages", "commonsImages"], picks: ["Flickr", "Wikimedia"], sites: ["unsplash", "pexels", "pixabayImages", "googleImages", "envatoPhotos"],
+  { id: "images", label: "Images", kind: "image", sources: ["openverseImages", "commonsImages"], picks: ["Flickr", "Wikimedia"], sites: ["unsplash", "pexels", "pixabayImages", "envatoPhotos"],
+    defaultSite: "googleImages",
     icon: ICON('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9.5" r="1.8"/><path d="m21 16-5-5-9 9"/>') },
   { id: "music", label: "Music", kind: "audio", sources: ["mixkitMusic", "youtubeMusic"], picks: ["Mixkit", "YouTube"], sites: ["pixabayMusic", "fma", "envatoMusic"],
     icon: ICON('<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>') },
@@ -1916,6 +1917,8 @@ const COLLECTIONS = [
 ];
 const favicon = (domain) => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
 const collectionById = (id) => COLLECTIONS.find((c) => c.id === id) || COLLECTIONS[0];
+// A tab with a default site (Images: Google Images) opens it first; the others show MediaDrop's own results
+const defaultSource = (c) => (c.defaultSite ? `site:${c.defaultSite}` : "all");
 
 const LICENCE_BADGE = {
   free: { label: "Copyright-free", cls: "free" },
@@ -1935,6 +1938,7 @@ try {
   search.collection = collectionById(localStorage.getItem("searchTab")).id;
   search.freeOnly = localStorage.getItem("searchFreeOnly") === "1";
 } catch (e) {}
+search.site = defaultSource(collectionById(search.collection));
 searchFreeOnly.checked = search.freeOnly;
 
 function renderChips() {
@@ -1953,7 +1957,7 @@ function renderChips() {
       // Keep the same site where the new tab has it (Pexels videos -> Pexels photos)
       if (search.site.startsWith("site:")) {
         const name = SITES[search.site.slice(5)].name;
-        const same = to.sites.find((id) => SITES[id].name === name);
+        const same = [to.defaultSite, ...to.sites].find((id) => id && SITES[id].name === name);
         if (same && search.query) return pickSource(`site:${same}`);
       } else if (search.site.startsWith("pick:") && to.picks.includes(search.site.slice(5))) {
         renderSources();
@@ -1961,7 +1965,16 @@ function renderChips() {
         searchView.scrollTop = 0;
         return;
       }
-      pickSource("all");
+      const start = defaultSource(to);
+      if (start.startsWith("site:") && !search.query) {
+        // Nothing searched yet: show the intro, and the default site opens with the first search
+        search.site = start;
+        switchTab("search");
+        renderSources();
+        renderResults();
+      } else {
+        pickSource(start);
+      }
       searchView.scrollTop = 0;
     };
   });
@@ -1979,10 +1992,12 @@ function renderSources() {
     const { results, pending } = collectionState(c, name);
     return pending && !results.length ? "" : `<span class="sv-count">${results.length}</span>`;
   };
+  const siteChip = (id) => chip(`site:${id}`, img(SITES[id].domain), SITES[id].name);
   searchSources.innerHTML =
+    (c.defaultSite ? siteChip(c.defaultSite) : "") +
     chip("all", ALL_ICON, "All results") +
     c.picks.map((name) => chip(`pick:${name}`, img(INLINE_SITES[name]), name, count(name))).join("") +
-    c.sites.map((id) => chip(`site:${id}`, img(SITES[id].domain), SITES[id].name)).join("");
+    c.sites.map(siteChip).join("");
   searchSources.querySelectorAll(".sv-source").forEach((btn) => { btn.onclick = () => pickSource(btn.dataset.key); });
 }
 
@@ -2024,11 +2039,11 @@ function runSearch(query) {
   if (!q) return;
   searchQuery.value = q;
   // A site picked above searches itself; otherwise MediaDrop's results show
+  if (search.site === "page") search.site = defaultSource(collectionById(search.collection));
   if (search.site.startsWith("site:")) {
     search.query = q;
     pickSource(search.site);
   } else {
-    if (search.site === "page") search.site = "all";
     switchTab("search");
     renderSources();
   }

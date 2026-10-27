@@ -2706,10 +2706,28 @@ function setupFeedbackHandler() {
 
 function setupUpdateHandlers() {
   // The installer has finished by the time it reopens MediaDrop, so its files from the last update can go
+  // A failed install leaves its reason there (install.ps1) and reopens MediaDrop, so say what went wrong
   const tempDir = app.getPath("temp");
+  let failure = "";
   for (const name of fs.readdirSync(tempDir)) {
+    if (!name.startsWith("mediadrop-update-")) continue;
+    const dir = path.join(tempDir, name);
+    const errorFile = path.join(dir, "update-error.txt");
+    try { failure = fs.readFileSync(errorFile, "utf8").trim() || failure; fs.rmSync(errorFile, { force: true }); } catch (e) {}
     // Windows refuses while the installer still has its log open; that copy goes next launch
-    if (name.startsWith("mediadrop-update-")) try { fs.rmSync(path.join(tempDir, name), { recursive: true, force: true }); } catch (e) {}
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
+  }
+  if (failure) {
+    dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      message: "The update didn't finish installing",
+      detail: `${failure}\n\nThis is MediaDrop ${app.getVersion()}. Quit Premiere Pro, then download MediaDrop again and run Install MediaDrop.cmd.`,
+      buttons: ["Open Download Page", "OK"],
+      defaultId: 0,
+      cancelId: 1
+    }).then(({ response }) => {
+      if (response === 0) shell.openExternal(`https://github.com/${UPDATE_REPO}/releases/latest`);
+    });
   }
 
   handleFromApp("update:install", async () => {

@@ -16,10 +16,11 @@ function Get-AppProcesses {
   Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith("$appDir\", [StringComparison]::OrdinalIgnoreCase) }
 }
 
-# Windows releases file handles a moment after a process exits, so retry briefly
+# Windows releases file handles a moment after a process exits, and antivirus scans new files
+# before letting go of them, so retry for up to 15 seconds
 function Invoke-WithRetry([scriptblock]$action) {
   for ($i = 1; ; $i++) {
-    try { & $action; return } catch { if ($i -ge 10) { throw }; Start-Sleep -Milliseconds 500 }
+    try { & $action; return } catch { if ($i -ge 30) { throw }; Start-Sleep -Milliseconds 500 }
   }
 }
 
@@ -123,6 +124,13 @@ try {
 } catch {
   Write-Host ""
   Write-Host "Installation failed: $($_.Exception.Message)" -ForegroundColor Red
+  if ($Update) {
+    # Nobody sees this hidden window. Leave the reason in the update folder and reopen MediaDrop
+    # (a failed swap puts the old copy back), which reads it and says what went wrong.
+    Set-Content (Join-Path (Split-Path (Split-Path $src)) "update-error.txt") $_.Exception.Message -ErrorAction SilentlyContinue
+    if (Test-Path $exe) { Start-Process $exe }
+    exit 1
+  }
   Write-Host "Close MediaDrop and Premiere Pro, then run Install MediaDrop.cmd again."
   exit 1
 }

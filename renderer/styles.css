@@ -350,9 +350,29 @@ body {
   color: var(--text-primary);
 }
 
-.custom-tab {
+.custom-tab, .link-tab {
   user-select: none;
 }
+
+/* Tabs opened from a link close from a small ✕ on the icon's corner */
+.link-tab-close {
+  position: absolute;
+  top: 3px;
+  left: 30px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  line-height: 1;
+  background: var(--bg-surface-hover);
+  border: 1px solid var(--border-prominent);
+  color: var(--text-secondary);
+}
+.link-tab:hover .link-tab-close { display: flex; }
+.link-tab-close:hover { background: var(--accent-error); border-color: var(--accent-error); color: var(--text-primary); }
 
 .add-site-btn {
   margin-top: 4px;

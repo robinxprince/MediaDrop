@@ -350,9 +350,7 @@ function createWindow() {
   // The tabs carry allowpopups only so these requests reach this handler.
   mainWindow.webContents.on("did-attach-webview", (_e, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:\/\//i.test(url) && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("open-link", { url, from: contents.id });
-      }
+      sendOpenLink(url, contents.id);
       return { action: "deny" };
     });
   });
@@ -1459,6 +1457,26 @@ async function downloadDirectMedia(mediaUrl, mediaType = "image", referrer = "",
   }
 }
 
+// The address a link really goes to: links inside Google Docs and search results go through
+// google.com/url?q=<the real link>. Only web addresses; null for anything else.
+function realLinkUrl(url) {
+  try {
+    let u = new URL(String(url || ""));
+    if (/(^|\.)google\.[a-z.]+$/.test(u.hostname) && u.pathname === "/url") {
+      u = new URL(u.searchParams.get("q") || u.searchParams.get("url") || "");
+    }
+    return u.protocol === "https:" || u.protocol === "http:" ? u.href : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Hands a link to the app's tabs; newTab always opens it in a tab of its own
+function sendOpenLink(url, from, newTab = false) {
+  const target = realLinkUrl(url);
+  if (target && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("open-link", { url: target, from, newTab });
+}
+
 // ── GLOBAL CONTEXT MENU FOR WEBVIEWS ─────────────────────────────────────────
 // The guest preload reports the original full-size URL of the image under the cursor
 // (e.g. Google Images, whose grid only holds thumbnails) just before the menu opens.
@@ -1505,11 +1523,11 @@ app.on("web-contents-created", (_event, contents) => {
       menu.append(new MenuItem({ type: "separator" }));
     }
 
-    if (params.linkURL) {
-      menu.append(new MenuItem({
-        label: "Copy Link",
-        role: "copyLink"
-      }));
+    const linkUrl = params.linkURL && realLinkUrl(params.linkURL);
+    if (linkUrl) {
+      menu.append(new MenuItem({ label: "Open Link in New Tab", click: () => sendOpenLink(linkUrl, contents.id, true) }));
+      menu.append(new MenuItem({ label: "Open Link in Browser", click: () => shell.openExternal(linkUrl) }));
+      menu.append(new MenuItem({ label: "Copy Link", click: () => clipboard.writeText(linkUrl) }));
       menu.append(new MenuItem({ type: "separator" }));
     }
 

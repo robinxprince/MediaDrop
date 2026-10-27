@@ -18,6 +18,8 @@ const btnHamburger = document.getElementById("btnHamburger");
 
 // The site tabs that are loaded right now, by tab name (see "SITE TABS" below)
 const views = {};
+// Tabs opened from a link to another site, until closed (see "LINK TABS" below)
+let linkTabs = []; // { id, url, domain, title, returnTo }
 
 let activeTabName = "";
 let activeView = null;
@@ -128,20 +130,34 @@ const SEARCH_URLS = {
   envato: (q) => `https://elements.envato.com/stock-video/${encodeURIComponent(q.trim().toLowerCase().replace(/\s+/g, "-"))}`,
   google: (q) => `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}`
 };
-// Links a site opens in a new tab: YouTube goes to the YouTube tab (with its download button),
-// anything else opens in the tab it came from, so Back returns to Drive or the Doc
-window.api.onOpenLink(({ url, from } = {}) => {
-  let target = String(url || "");
-  try {
-    // Links inside Google Docs go through google.com/url?q=<the real link>
-    const u = new URL(target);
-    if (/(^|\.)google\.[a-z.]+$/.test(u.hostname) && u.pathname === "/url") target = u.searchParams.get("q") || u.searchParams.get("url") || target;
-  } catch (e) { return; }
+// Links a site opens in a new tab (main.js has already unwrapped Google's redirect links).
+// YouTube goes to the YouTube tab, with its download button. A link within the same site opens in
+// the tab it came from, so Back returns to Drive or the Doc. A link to another site opens in a
+// link tab, leaving the page it came from as it was. "Open Link in New Tab" always gets a link tab.
+window.api.onOpenLink(({ url, from, newTab } = {}) => {
+  const target = String(url || "");
   if (!/^https?:\/\//i.test(target)) return;
-  if (/^https?:\/\/((www|m|music)\.)?(youtube\.com|youtu\.be)\//i.test(target)) return showSite("youtube", target);
   const source = Object.entries(views).find(([, wv]) => { try { return wv.getWebContentsId() === from; } catch (e) { return false; } });
-  if (source) showSite(source[0], target);
+  if (!newTab) {
+    if (/^https?:\/\/((www|m|music)\.)?(youtube\.com|youtu\.be)\//i.test(target)) return showSite("youtube", target);
+    let sourceUrl = "";
+    try { sourceUrl = source ? source[1].getURL() : ""; } catch (e) {}
+    if (source && siteOf(sourceUrl) === siteOf(target)) return showSite(source[0], target);
+  }
+  openLinkTab(target, source ? source[0] : activeTabName);
 });
+
+// drive.google.com and docs.google.com are one site; so are www.bbc.co.uk and news.bbc.co.uk
+function siteOf(url) {
+  try {
+    const labels = new URL(url).hostname.split(".");
+    const [second, last] = labels.slice(-2);
+    const countrySuffix = labels.length > 2 && /^[a-z]{2}$/.test(last) && ["co", "com", "net", "org", "gov", "ac", "edu", "ne", "or"].includes(second);
+    return labels.slice(countrySuffix ? -3 : -2).join(".");
+  } catch (e) {
+    return "";
+  }
+}
 
 window.api.onOpenSite(({ site, query } = {}) => {
   if (!SEARCH_URLS[site]) return;
@@ -226,7 +242,7 @@ const tabLastUsed = {};
 function tabHome(id) {
   if (BUILT_IN_HOMES[id]) return BUILT_IN_HOMES[id];
   if (id === "explore") return unloadedUrls.explore || "";
-  const bm = customBookmarks.find((b) => b.id === id);
+  const bm = customBookmarks.find((b) => b.id === id) || linkTabs.find((t) => t.id === id);
   return bm ? bm.url : "";
 }
 
@@ -266,6 +282,11 @@ function openView(id, url) {
       bm.title = e.title.slice(0, 24);
       saveBookmarks(customBookmarks);
       renderCustomTabs();
+    }
+    const linkTab = linkTabs.find((t) => t.id === id);
+    if (linkTab && e.title) {
+      linkTab.title = e.title;
+      renderLinkTabs();
     }
   });
 
@@ -315,6 +336,20 @@ setInterval(() => {
   });
 }, 60 * 1000);
 
+// The site's favicon, or its first letter when there's none
+function siteIconHtml(domain, title) {
+  const iconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+  const initial = (title || domain || "W").charAt(0).toUpperCase();
+  return `
+      <div class="nav-icon-box">
+        <img class="custom-tab-icon" draggable="false" src="${escapeHtml(iconUrl)}" alt="${escapeHtml(title)}"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+        <div class="custom-tab-badge" style="display:none;">${escapeHtml(initial)}</div>
+      </div>
+      <span class="nav-label">${escapeHtml(title)}</span>
+    `;
+}
+
 function renderCustomTabs() {
   customTabsNav.innerHTML = "";
 
@@ -326,18 +361,7 @@ function renderCustomTabs() {
     btn.id = `tab-${bm.id}`;
     btn.title = `${bm.title} (${bm.domain}) - Drag to reorder, right-click for options`;
     btn.draggable = true;
-
-    const iconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(bm.domain)}&sz=64`;
-    const initial = (bm.title || bm.domain || "W").charAt(0).toUpperCase();
-
-    btn.innerHTML = `
-      <div class="nav-icon-box">
-        <img class="custom-tab-icon" draggable="false" src="${escapeHtml(iconUrl)}" alt="${escapeHtml(bm.title)}" 
-             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-        <div class="custom-tab-badge" style="display:none;">${escapeHtml(initial)}</div>
-      </div>
-      <span class="nav-label">${escapeHtml(bm.title)}</span>
-    `;
+    btn.innerHTML = siteIconHtml(bm.domain, bm.title);
 
     btn.addEventListener("click", () => {
       switchTab(bm.id);
@@ -352,6 +376,47 @@ function renderCustomTabs() {
 
     customTabsNav.appendChild(btn);
   });
+}
+
+// ── LINK TABS: a link to another site opens under the sidebar's sites ──────
+// They aren't remembered: closing one (✕ or middle-click) returns to the tab the link came from
+const linkTabsNav = document.getElementById("linkTabsNav");
+const MAX_LINK_TABS = 8;
+let linkTabCount = 0;
+
+function openLinkTab(url, returnTo) {
+  const existing = linkTabs.find((t) => t.url === url);
+  if (existing) return switchTab(existing.id);
+  const domain = extractDomain(url);
+  const id = `link_${++linkTabCount}`;
+  linkTabs.push({ id, url, domain, title: domain, returnTo });
+  if (linkTabs.length > MAX_LINK_TABS) closeLinkTab(linkTabs[0].id);
+  renderLinkTabs();
+  showSite(id);
+}
+
+function closeLinkTab(id) {
+  const tab = linkTabs.find((t) => t.id === id);
+  if (!tab) return;
+  linkTabs = linkTabs.filter((t) => t !== tab);
+  unloadTab(id);
+  delete unloadedUrls[id];
+  delete tabLastUsed[id];
+  renderLinkTabs();
+  if (activeTabName === id) switchTab(views[tab.returnTo] || tabHome(tab.returnTo) ? tab.returnTo : "envato");
+}
+
+function renderLinkTabs() {
+  linkTabsNav.replaceChildren(...linkTabs.map((t) => {
+    const btn = document.createElement("button");
+    btn.className = `nav-item link-tab ${activeTabName === t.id ? "active" : ""}`;
+    btn.id = `tab-${t.id}`;
+    btn.title = `${t.title} (${t.domain}) - Opened from a link. Middle-click or ✕ closes it`;
+    btn.innerHTML = `${siteIconHtml(t.domain, t.title)}<span class="link-tab-close" title="Close">✕</span>`;
+    btn.onclick = (e) => (e.target.closest(".link-tab-close") ? closeLinkTab(t.id) : switchTab(t.id));
+    btn.onauxclick = (e) => { if (e.button === 1) closeLinkTab(t.id); };
+    return btn;
+  }));
 }
 
 // ── SIDEBAR ORDER: drag sites up or down; the order is remembered ───────────

@@ -130,34 +130,23 @@ const SEARCH_URLS = {
   envato: (q) => `https://elements.envato.com/stock-video/${encodeURIComponent(q.trim().toLowerCase().replace(/\s+/g, "-"))}`,
   google: (q) => `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}`
 };
-// Links a site opens in a new tab (main.js has already unwrapped Google's redirect links).
-// YouTube goes to the YouTube tab, with its download button. A link within the same site opens in
-// the tab it came from, so Back returns to Drive or the Doc. A link to another site opens in a
-// link tab, leaving the page it came from as it was. "Open Link in New Tab" always gets a link tab.
-window.api.onOpenLink(({ url, from, newTab } = {}) => {
+// A link that gets a tab of its own, like a new tab in Chrome: one that asks for a new tab
+// (target="_blank", ⌘-click, Drive opening a Doc; main.js has already unwrapped Google's redirect
+// links) or a click from a sidebar site to another site (see universal-preload.js).
+// YouTube links go to the YouTube tab, with its download button, unless "Open Link in New Tab"
+// was picked; anything else opens in a link tab, leaving the page it came from as it was.
+function openLink(url, sourceId, newTab = false) {
   const target = String(url || "");
   if (!/^https?:\/\//i.test(target)) return;
-  const source = Object.entries(views).find(([, wv]) => { try { return wv.getWebContentsId() === from; } catch (e) { return false; } });
-  if (!newTab) {
-    if (/^https?:\/\/((www|m|music)\.)?(youtube\.com|youtu\.be)\//i.test(target)) return showSite("youtube", target);
-    let sourceUrl = "";
-    try { sourceUrl = source ? source[1].getURL() : ""; } catch (e) {}
-    if (source && siteOf(sourceUrl) === siteOf(target)) return showSite(source[0], target);
-  }
-  openLinkTab(target, source ? source[0] : activeTabName);
-});
-
-// drive.google.com and docs.google.com are one site; so are www.bbc.co.uk and news.bbc.co.uk
-function siteOf(url) {
-  try {
-    const labels = new URL(url).hostname.split(".");
-    const [second, last] = labels.slice(-2);
-    const countrySuffix = labels.length > 2 && /^[a-z]{2}$/.test(last) && ["co", "com", "net", "org", "gov", "ac", "edu", "ne", "or"].includes(second);
-    return labels.slice(countrySuffix ? -3 : -2).join(".");
-  } catch (e) {
-    return "";
-  }
+  if (!newTab && /^https?:\/\/((www|m|music)\.)?(youtube\.com|youtu\.be)\//i.test(target)) return showSite("youtube", target);
+  openLinkTab(target, sourceId || activeTabName);
 }
+
+const tabOfView = (match) => (Object.entries(views).find(([, wv]) => { try { return match(wv); } catch (e) { return false; } }) || [])[0];
+
+window.api.onOpenLink(({ url, from, newTab } = {}) => {
+  openLink(url, tabOfView((wv) => wv.getWebContentsId() === from), newTab);
+});
 
 window.api.onOpenSite(({ site, query } = {}) => {
   if (!SEARCH_URLS[site]) return;
@@ -265,8 +254,19 @@ function openView(id, url) {
       updateNavButtonsState();
     }
   };
-  wv.addEventListener("did-navigate", (e) => handleNav(e.url));
-  wv.addEventListener("did-navigate-in-page", (e) => handleNav(e.url));
+  wv.addEventListener("did-navigate", (e) => { wv.favicon = ""; handleNav(e.url); });
+  // Frames inside the page (Drive's contact cards) navigate too; the address is the page's
+  wv.addEventListener("did-navigate-in-page", (e) => { if (e.isMainFrame) handleNav(e.url); });
+  // The page's own icon: Drive's, not the Google "G" that a lookup by domain gives drive.google.com
+  wv.addEventListener("page-favicon-updated", (e) => {
+    wv.favicon = (e.favicons || []).find((u) => /^https?:\/\//i.test(u)) || "";
+    const linkTab = linkTabs.find((t) => t.id === id);
+    if (linkTab && wv.favicon && linkTab.icon !== wv.favicon) {
+      linkTab.icon = wv.favicon;
+      renderLinkTabs();
+    }
+    if (wv === activeView) updatePinButtonVisibility();
+  });
   wv.addEventListener("dom-ready", () => {
     if (wv === activeView) updateNavButtonsState();
   });
@@ -336,9 +336,9 @@ setInterval(() => {
   });
 }, 60 * 1000);
 
-// The site's favicon, or its first letter when there's none
-function siteIconHtml(domain, title) {
-  const iconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+// The page's icon when known, else the site's favicon, or its first letter when there's none
+function siteIconHtml(domain, title, icon) {
+  const iconUrl = icon || `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
   const initial = (title || domain || "W").charAt(0).toUpperCase();
   return `
       <div class="nav-icon-box">
@@ -361,7 +361,7 @@ function renderCustomTabs() {
     btn.id = `tab-${bm.id}`;
     btn.title = `${bm.title} (${bm.domain}) - Drag to reorder, right-click for options`;
     btn.draggable = true;
-    btn.innerHTML = siteIconHtml(bm.domain, bm.title);
+    btn.innerHTML = siteIconHtml(bm.domain, bm.title, bm.icon);
 
     btn.addEventListener("click", () => {
       switchTab(bm.id);
@@ -412,7 +412,7 @@ function renderLinkTabs() {
     btn.className = `nav-item link-tab ${activeTabName === t.id ? "active" : ""}`;
     btn.id = `tab-${t.id}`;
     btn.title = `${t.title} (${t.domain}) - Opened from a link. Middle-click or ✕ closes it`;
-    btn.innerHTML = `${siteIconHtml(t.domain, t.title)}<span class="link-tab-close" title="Close">✕</span>`;
+    btn.innerHTML = `${siteIconHtml(t.domain, t.title, t.icon)}<span class="link-tab-close" title="Close">✕</span>`;
     btn.onclick = (e) => (e.target.closest(".link-tab-close") ? closeLinkTab(t.id) : switchTab(t.id));
     btn.onauxclick = (e) => { if (e.button === 1) closeLinkTab(t.id); };
     return btn;
@@ -473,7 +473,7 @@ makeSortable(customTabsNav, (ids) => {
   saveBookmarks(customBookmarks);
 });
 
-function addBookmark(title, url) {
+function addBookmark(title, url, icon) {
   if (!url) return;
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
     url = "https://" + url;
@@ -491,7 +491,7 @@ function addBookmark(title, url) {
   const cleanTitle = title || domain.split(".")[0].toUpperCase();
   const id = "custom_" + Date.now().toString(36);
 
-  customBookmarks.push({ id, title: cleanTitle, url, domain });
+  customBookmarks.push({ id, title: cleanTitle, url, domain, ...(icon ? { icon } : {}) });
   saveBookmarks(customBookmarks);
   renderCustomTabs();
   switchTab(id);
@@ -534,7 +534,7 @@ function updatePinButtonVisibility() {
   if (!isPinned && !isBuiltIn) {
     btnPinCurrent.classList.remove("hidden");
     btnPinCurrent.title = `Add ${curDomain} to the sidebar`;
-    document.getElementById("pinCurrentIcon").src = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(curDomain)}&sz=64`;
+    document.getElementById("pinCurrentIcon").src = activeView.favicon || `https://www.google.com/s2/favicons?domain=${encodeURIComponent(curDomain)}&sz=64`;
   } else {
     btnPinCurrent.classList.add("hidden");
   }
@@ -551,7 +551,10 @@ btnPinCurrent.onclick = () => {
   if (!curUrl) return;
   const domain = extractDomain(curUrl);
   const title = curTitle ? curTitle.split(/[-–|]/)[0].trim().slice(0, 24) : domain;
-  addBookmark(title, curUrl);
+  // A link tab that gets pinned becomes the pinned site
+  const fromLinkTab = activeTabName.startsWith("link_") ? activeTabName : "";
+  addBookmark(title, curUrl, activeView.favicon);
+  if (fromLinkTab) closeLinkTab(fromLinkTab);
 };
 
 // ── OPEN A WEBSITE ───────────────────────────────────────────────────────────
@@ -936,6 +939,11 @@ function handleGuestMessage(event) {
     else if (payload === "forward") handleNavForward();
   } else if (event.channel === "youtube-import-trigger" && payload && payload.url) {
     requestYouTubeDownload(payload.url, payload.title);
+  } else if (event.channel === "mediadrop-open-link" && /^https?:\/\//i.test(String(payload))) {
+    // A link tab is a tab of its own already: its links to other sites open in it, as in Chrome
+    const id = tabOfView((wv) => wv === event.target);
+    if (id && id.startsWith("link_")) event.target.loadURL(payload);
+    else openLink(payload, id);
   }
 }
 

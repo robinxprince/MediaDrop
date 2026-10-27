@@ -2,7 +2,8 @@
  * MediaDrop guest preload — attached to every <webview> by main.js (will-attach-webview).
  *
  * Runs sandboxed, in an isolated world: it shares the page DOM but not its JS globals.
- *  1. Mouse back/forward buttons → host navigation; Chrome objects on Google sign-in
+ *  1. Mouse back/forward buttons → host navigation; Chrome objects on Google sign-in;
+ *     a click on a link to another site → the app, to open it in a tab
  *  2. Google Images → resolve the original full-size URL for right-click imports
  *  3. YouTube → format-picker button on every thumbnail and on watch pages
  */
@@ -22,6 +23,26 @@
   };
   window.addEventListener("mouseup", onMouseNav, true);
   window.addEventListener("auxclick", onMouseNav, true);
+
+  // A plain click on a link to another site (Google results to Drive, Drive to Docs) goes to the
+  // app, which opens it in a tab so this page stays as it was. Clicks the page handles itself,
+  // and sign-in pages, which must return to the page that asked for them, stay in place.
+  const SIGN_IN = /^(accounts?|login|auth|signin|sso|consent)\./;
+  const bareHost = (h) => h.replace(/^www\./, "");
+  document.addEventListener("click", (e) => {
+    if (!e.isTrusted || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const link = e.target.closest && e.target.closest("a[href]");
+    if (!link || (link.target && link.target !== "_self") || link.hasAttribute("download")) return;
+    let url;
+    try {
+      url = new URL(link.href);
+      // Google's results and Docs link through google.com/url?q=<the real link>
+      if (/(^|\.)google\.[a-z.]+$/.test(url.hostname) && url.pathname === "/url") url = new URL(url.searchParams.get("q") || url.searchParams.get("url") || "");
+    } catch (err) { return; }
+    if (!/^https?:$/.test(url.protocol) || bareHost(url.hostname) === bareHost(host) || SIGN_IN.test(url.hostname) || SIGN_IN.test(host)) return;
+    e.preventDefault();
+    ipcRenderer.sendToHost("mediadrop-open-link", url.href);
+  });
 
   // Google refuses to sign in when window.chrome lacks the objects real Chrome has
   // ("This browser or app may not be secure"). Add them on its sign-in page only:

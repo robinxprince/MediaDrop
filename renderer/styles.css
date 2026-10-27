@@ -318,10 +318,13 @@ body {
 }
 
 /* ── Custom Bookmarked Tabs & Add Button ──────────────────────────────────── */
+/* Separates the sites that stay from the tabs opened from links, so it has to be seen */
 .sidebar-divider {
-  height: 1px;
-  background: var(--border-subtle);
-  margin: 6px 12px;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--text-muted);
+  opacity: 0.6;
+  margin: 10px 2px;
 }
 
 .custom-tabs-nav {

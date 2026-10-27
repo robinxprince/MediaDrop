@@ -628,6 +628,16 @@ function setHotkeyHint(text = HOTKEY_HINT, kind = "") {
   hotkeyHint.className = kind ? `set-desc is-${kind}` : "set-desc";
 }
 
+// Without ⌘, ⌃ or ⌥ the key stops typing in other apps while MediaDrop runs; allowed, but say so
+// whenever that shortcut is set
+function showHotkeyHint() {
+  const parts = (appSettings.hotkey || DEFAULT_HOTKEY).split("+");
+  const key = parts[parts.length - 1];
+  const blocksTyping = !parts.some((p) => ["CommandOrControl", "Control", "Alt", "Super"].includes(p)) && !/^F\d+$/.test(key);
+  if (blocksTyping) setHotkeyHint(`Works, but ${KEY_SYMBOLS[key] || PUNCTUATION_KEYS[key] || key} won't type in other apps while MediaDrop is open. Reset uses ${IS_WIN ? "Alt+Space" : "⌥ Space"}.`, "warning");
+  else setHotkeyHint();
+}
+
 // Electron accelerator name for the physical key (e.key would give "µ" for Option+M)
 function acceleratorKey(code) {
   const m = /^(?:Key|Digit)([A-Z0-9])$/.exec(code);
@@ -718,7 +728,7 @@ async function openSettings() {
   };
   premierePopover.classList.add("hidden");
   stopRecordingHotkey();
-  setHotkeyHint();
+  showHotkeyHint();
   updateSettingsUI();
   settingsModal.classList.remove("hidden");
 }
@@ -757,13 +767,13 @@ document.getElementById("btnSendFeedback").onclick = () => window.api.openFeedba
 btnResetHotkey.onclick = () => {
   appSettings.hotkey = DEFAULT_HOTKEY;
   stopRecordingHotkey();
-  setHotkeyHint();
+  showHotkeyHint();
 };
 
 btnRecordHotkey.onclick = () => {
   if (isRecordingHotkey) {
     stopRecordingHotkey();
-    setHotkeyHint();
+    showHotkeyHint();
     return;
   }
   isRecordingHotkey = true;
@@ -778,7 +788,7 @@ window.addEventListener("keydown", (e) => {
   e.stopPropagation();
   if (e.key === "Escape") {
     stopRecordingHotkey();
-    setHotkeyHint();
+    showHotkeyHint();
     return;
   }
   if (["Meta", "Control", "Shift", "Alt", "Tab"].includes(e.key)) return;
@@ -796,10 +806,7 @@ window.addEventListener("keydown", (e) => {
   if (e.shiftKey) modifiers.push("Shift");
   appSettings.hotkey = [...modifiers, key].join("+");
   stopRecordingHotkey();
-  // Without ⌘, ⌃ or ⌥ the key stops typing in other apps while MediaDrop runs; allowed, but say so
-  const blocksTyping = !e.metaKey && !e.ctrlKey && !e.altKey && !/^F\d+$/.test(key);
-  if (blocksTyping) setHotkeyHint("Works, but while MediaDrop is open this key won't type in other apps.", "warning");
-  else setHotkeyHint();
+  showHotkeyHint();
 }, true);
 
 settingInsertMode.onchange = () => {

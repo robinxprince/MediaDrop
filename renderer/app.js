@@ -830,6 +830,14 @@ btnOpenFolder.onclick = () => window.api.openDownloadsFolder();
 // The main process asks for confirmation, then quits while the uninstaller runs
 document.getElementById("btnUninstall").onclick = () => window.api.uninstall();
 
+// The main process asks first; open tabs then reload signed out
+document.getElementById("btnSignOutAll").onclick = async () => {
+  const res = await window.api.signOutAll();
+  if (!res || !res.ok) return;
+  Object.values(views).forEach((wv) => { try { wv.reload(); } catch (e) {} });
+  showNotice("Signed out of all sites", "✓");
+};
+
 document.getElementById("btnReportBug").onclick = () => window.api.openFeedback("bug");
 document.getElementById("btnSendFeedback").onclick = () => window.api.openFeedback("feedback");
 

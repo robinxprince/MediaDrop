@@ -7,6 +7,13 @@ const crypto = require("crypto");
 
 const IS_WIN = process.platform === "win32";
 
+// A dev run (electron .) is named "mediadrop", which on macOS and Windows is the installed app's
+// folder, and its Electron has no cookie encryption. Give it a profile of its own so it never
+// writes unencrypted sign-ins into the real one. (Test scripts that pick their own folder keep it.)
+if (!app.isPackaged && app.getPath("userData") === path.join(app.getPath("appData"), app.getName())) {
+  app.setPath("userData", path.join(app.getPath("appData"), "MediaDrop Dev"));
+}
+
 // Apps opened from Finder get a minimal PATH, so add Homebrew and the standard binary paths on macOS.
 // Every child process inherits process.env.
 const BREW_PATHS = process.platform === "darwin" ? ["/opt/homebrew/bin", "/usr/local/bin", "/opt/homebrew/opt/ffmpeg/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"] : [];
@@ -758,6 +765,17 @@ async function exportYouTubeCookies() {
 function removeCookieFile(cookiePath) {
   if (!cookiePath) return;
   try { fs.unlinkSync(cookiePath); } catch (e) {}
+}
+
+// yt-dlp's cookie file is deleted when yt-dlp exits; a crash in between leaves it behind. So does
+// the single shared file older builds used (mediadrop_yt_cookies.txt).
+function removeLeftoverCookieFiles() {
+  const temp = app.getPath("temp");
+  try {
+    for (const name of fs.readdirSync(temp)) {
+      if (/^mediadrop_yt_cookies(_[\w.]+)?\.txt$/.test(name)) removeCookieFile(path.join(temp, name));
+    }
+  } catch (e) {}
 }
 
 function probeMedia(filePath) {
@@ -2594,6 +2612,80 @@ function setupUninstallHandler() {
   });
 }
 
+// ── SIGN-INS ─────────────────────────────────────────────────────────────────
+// Sites' sign-ins are cookies in the shared "persist:mediadrop" session, encrypted on disk by the
+// EnableCookieEncryption fuse (scripts/build-app.js, build-win.js): the Keychain on macOS, DPAPI on Windows.
+
+// Cookies saved before 1.0.1 turned encryption on, or by a dev run, stay on disk unencrypted (in the
+// "value" column) until the site changes them. Once, before the session opens its database: take
+// them out of it, then save the ordinary ones again through the session, which stores them
+// encrypted and keeps the user signed in. Partitioned ones (third-party embeds, mostly ad networks)
+// are only removed: Electron's cookie API can't save a cookie into a partition, and saving one
+// unpartitioned would let it follow the user across sites.
+const SAMESITE = { "-1": "unspecified", 0: "no_restriction", 1: "lax", 2: "strict" };
+
+async function encryptOldCookies() {
+  if (!app.isPackaged || currentSettings.cookiesEncrypted) return;
+  const dbPath = path.join(app.getPath("userData"), "Partitions", "mediadrop", "Cookies");
+  let plain = [];
+  if (fs.existsSync(dbPath)) {
+    const { DatabaseSync } = require("node:sqlite");
+    const db = new DatabaseSync(dbPath);
+    try {
+      const query = db.prepare("SELECT host_key, name, value, path, top_frame_site_key, expires_utc, is_secure, is_httponly, is_persistent, samesite FROM cookies WHERE value <> ''");
+      query.setReadBigInts(true); // expiry times are past JavaScript's safe integers
+      plain = query.all();
+      db.exec("DELETE FROM cookies WHERE value <> ''");
+    } finally {
+      db.close();
+    }
+  }
+
+  const ses = session.fromPartition("persist:mediadrop");
+  const now = Date.now() / 1000;
+  for (const c of plain) {
+    // Chromium counts microseconds from 1601
+    const expires = c.is_persistent ? Number(c.expires_utc) / 1e6 - 11644473600 : 0;
+    if (c.top_frame_site_key || (c.is_persistent && expires <= now)) continue;
+    try {
+      await ses.cookies.set({
+        url: `${c.is_secure ? "https" : "http"}://${c.host_key.replace(/^\./, "")}${c.path || "/"}`,
+        name: c.name,
+        value: c.value,
+        path: c.path,
+        secure: !!c.is_secure,
+        httpOnly: !!c.is_httponly,
+        sameSite: SAMESITE[c.samesite] || "unspecified",
+        ...(c.host_key.startsWith(".") ? { domain: c.host_key } : {}),
+        ...(c.is_persistent ? { expirationDate: expires } : {})
+      });
+    } catch (e) {
+      console.warn("[MediaDrop] Could not save a cookie again:", c.host_key, c.name);
+    }
+  }
+  await ses.cookies.flushStore();
+  saveSettings({ cookiesEncrypted: true });
+}
+
+function setupSignOutHandler() {
+  handleFromApp("app:sign-out-all", async () => {
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      message: "Sign out of all sites?",
+      detail: "MediaDrop forgets every sign-in and everything sites saved, on Google, YouTube, Envato and the rest. Your downloads and settings are kept.",
+      buttons: ["Sign Out", "Cancel"],
+      defaultId: 1,
+      cancelId: 1
+    });
+    if (response !== 0) return { ok: false, cancelled: true };
+    const ses = session.fromPartition("persist:mediadrop");
+    await ses.clearStorageData();
+    await ses.clearCache();
+    await ses.clearAuthCache();
+    return { ok: true };
+  });
+}
+
 // ── BUGS AND FEEDBACK ────────────────────────────────────────────────────────
 // Opens the GitHub issue forms (.github/ISSUE_TEMPLATE) in the browser, with the version and computer filled in
 const FEEDBACK_FORMS = { bug: "bug_report.yml", feedback: "feedback.yml" };
@@ -2641,10 +2733,14 @@ function setupUpdateHandlers() {
   setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL);
 }
 
-app.whenReady().then(() => {
-  // Older builds left all Google/YouTube session cookies in this shared temp file
-  removeCookieFile(path.join(app.getPath("temp"), "mediadrop_yt_cookies.txt"));
+app.whenReady().then(async () => {
+  // A second copy only hands over to the running one (second-instance) and quits. It must not touch
+  // the profile or the temp files the running copy is using.
+  if (!gotTheLock) return;
+  removeLeftoverCookieFiles();
   loadSettings();
+  // Before any page loads, so no site changes a cookie while it's saved again
+  await encryptOldCookies().catch((e) => console.warn("[MediaDrop] Could not encrypt old cookies:", e.message));
   createWindow();
   setupUnifiedSession();
   setupYouTubeHandlers();
@@ -2653,6 +2749,7 @@ app.whenReady().then(() => {
   setupUpdateHandlers();
   setupUninstallHandler();
   setupFeedbackHandler();
+  setupSignOutHandler();
   setupSearchHandlers();
   startBridgeMonitor();
   startClipboardWatch();

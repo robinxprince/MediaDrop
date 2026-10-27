@@ -168,7 +168,7 @@ document.getElementById("btnSidebarHistory").onclick = () => {
 };
 
 // ── CUSTOM BOOKMARKS & ANY WEBSITE PINNING ───────────────────────────────────
-const customTabsNav = document.getElementById("customTabsNav");
+const sidebarNav = document.querySelector(".sidebar-nav");
 const btnAddWebsite = document.getElementById("btnAddWebsite");
 const btnPinCurrent = document.getElementById("btnPinCurrent");
 const addSiteModal = document.getElementById("addSiteModal");
@@ -350,8 +350,10 @@ function siteIconHtml(domain, title, icon) {
     `;
 }
 
+// Pinned sites sit with the built-in ones above the sidebar's line, in one order the user drags
 function renderCustomTabs() {
-  customTabsNav.innerHTML = "";
+  sidebarNav.querySelectorAll(":scope > .custom-tab").forEach((el) => el.remove());
+  const divider = sidebarNav.querySelector(".sidebar-divider");
 
   customBookmarks.forEach(bm => {
 
@@ -374,11 +376,12 @@ function renderCustomTabs() {
       openBookmarkContextMenu(e.clientX, e.clientY, bm);
     });
 
-    customTabsNav.appendChild(btn);
+    sidebarNav.insertBefore(btn, divider);
   });
+  applySidebarOrder();
 }
 
-// ── LINK TABS: a link to another site opens under the sidebar's sites ──────
+// ── LINK TABS: a link to another site opens below the sidebar's line ───────
 // They aren't remembered: closing one (✕ or middle-click) returns to the tab the link came from
 const linkTabsNav = document.getElementById("linkTabsNav");
 const MAX_LINK_TABS = 8;
@@ -420,17 +423,19 @@ function renderLinkTabs() {
 }
 
 // ── SIDEBAR ORDER: drag sites up or down; the order is remembered ───────────
-const sidebarNav = document.querySelector(".sidebar-nav");
-const BUILTIN_ORDER_KEY = "mediadrop_builtin_order";
+// Built-in and pinned sites share one order (the key's name is from when it held only built-ins);
+// a site that isn't in it yet, like one just pinned, goes last
+const SIDEBAR_ORDER_KEY = "mediadrop_builtin_order";
 
-function applyBuiltinOrder() {
+function applySidebarOrder() {
   let order = [];
-  try { order = JSON.parse(localStorage.getItem(BUILTIN_ORDER_KEY)) || []; } catch (e) {}
+  try { order = JSON.parse(localStorage.getItem(SIDEBAR_ORDER_KEY)) || []; } catch (e) {}
   const divider = sidebarNav.querySelector(".sidebar-divider");
-  order.forEach((id) => {
-    const btn = document.getElementById(`tab-${id}`);
-    if (btn && btn.parentElement === sidebarNav) sidebarNav.insertBefore(btn, divider);
-  });
+  const rank = (el) => { const i = order.indexOf(el.dataset.tab); return i < 0 ? Infinity : i; };
+  [...sidebarNav.querySelectorAll(":scope > .nav-item[data-tab]")]
+    .map((el, i) => ({ el, i }))
+    .sort((a, b) => rank(a.el) - rank(b.el) || a.i - b.i)
+    .forEach(({ el }) => sidebarNav.insertBefore(el, divider));
 }
 
 // Lets the site buttons directly inside `container` be dragged into a new order
@@ -464,13 +469,9 @@ function makeSortable(container, onReorder) {
   });
 }
 
-applyBuiltinOrder();
+applySidebarOrder();
 makeSortable(sidebarNav, (ids) => {
-  try { localStorage.setItem(BUILTIN_ORDER_KEY, JSON.stringify(ids)); } catch (e) {}
-});
-makeSortable(customTabsNav, (ids) => {
-  customBookmarks = ids.map((id) => customBookmarks.find((b) => b.id === id)).filter(Boolean);
-  saveBookmarks(customBookmarks);
+  try { localStorage.setItem(SIDEBAR_ORDER_KEY, JSON.stringify(ids)); } catch (e) {}
 });
 
 function addBookmark(title, url, icon) {

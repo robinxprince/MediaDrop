@@ -2532,6 +2532,31 @@ function downloadUpdate(url, dest, totalBytes) {
   });
 }
 
+// Starts an installer or uninstaller that outlives MediaDrop: it waits for MediaDrop to quit, then
+// replaces or removes it. On Windows a detached PowerShell has no console and exits before running
+// anything, and an attached one is closed along with MediaDrop, so Windows (WMI) starts it instead:
+// hidden, and apart from MediaDrop's processes. Resolves once it has started.
+const POWERSHELL = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+async function runAfterQuit(script, args, cwd, logPath) {
+  if (!IS_WIN) {
+    const out = logPath ? fs.openSync(logPath, "w") : "ignore";
+    cp.spawn("/bin/bash", [script, ...args], { detached: true, stdio: ["ignore", out, out], cwd }).unref();
+    return;
+  }
+  const quote = (s) => `'${s.replace(/'/g, "''")}'`;
+  const command = `& ${quote(script)} ${args.join(" ")}${logPath ? ` *> ${quote(logPath)}` : ""}`;
+  const launcher = [
+    "$startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }",
+    `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ${quote(`"${POWERSHELL}" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "${command}"`)}; CurrentDirectory = ${quote(cwd)}; ProcessStartupInformation = $startup }`,
+    "if ($r.ReturnValue -ne 0) { throw \"error $($r.ReturnValue)\" }"
+  ].join("\n");
+  try {
+    await execFileAsync(POWERSHELL, ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(launcher, "utf16le").toString("base64")], { timeout: 30000 });
+  } catch (e) {
+    throw new Error(`Windows couldn't start ${path.basename(script)} (${String(e.message).trim().split("\n").pop()})`);
+  }
+}
+
 async function installUpdate() {
   const update = availableUpdate;
   if (!update) return { ok: false, error: "No update is available." };
@@ -2558,13 +2583,8 @@ async function installUpdate() {
       throw new Error("The update package is missing its installer.");
     }
 
-    // The installer outlives this process: it waits for MediaDrop to quit, replaces it and reopens it
-    const log = fs.openSync(path.join(workDir, "install.log"), "w");
-    const [runner, args] = IS_WIN
-      ? [path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installer, "-Update"]]
-      : ["/bin/bash", [installer]];
-    cp.spawn(runner, args, { detached: true, windowsHide: true, stdio: ["ignore", log, log], cwd: setupDir }).unref();
+    // The installer waits for MediaDrop to quit, replaces it and reopens it
+    await runAfterQuit(installer, IS_WIN ? ["-Update"] : [], setupDir, path.join(workDir, "install.log"));
     setTimeout(() => app.quit(), 300);
     return { ok: true };
   } catch (e) {
@@ -2602,11 +2622,13 @@ function setupUninstallHandler() {
     });
     if (response !== 0) return { ok: false, cancelled: true };
 
-    const [runner, args] = IS_WIN
-      ? [path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, ...(checkboxChecked ? ["-RemoveData"] : [])]]
-      : ["/bin/bash", [script, checkboxChecked ? "--remove-data" : "--keep-data"]];
-    cp.spawn(runner, args, { detached: true, windowsHide: true, stdio: "ignore", cwd: app.getPath("temp") }).unref();
+    const args = IS_WIN ? (checkboxChecked ? ["-RemoveData"] : []) : [checkboxChecked ? "--remove-data" : "--keep-data"];
+    try {
+      await runAfterQuit(script, args, app.getPath("temp"));
+    } catch (e) {
+      await dialog.showMessageBox(mainWindow, { type: "error", message: "MediaDrop couldn't start the uninstaller", detail: e.message });
+      return { ok: false };
+    }
     setTimeout(() => app.quit(), 300);
     return { ok: true };
   });

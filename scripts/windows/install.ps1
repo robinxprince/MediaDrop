@@ -127,7 +127,7 @@ try {
   if ($Update) {
     # Nobody sees this hidden window. Leave the reason in the update folder and reopen MediaDrop
     # (a failed swap puts the old copy back), which reads it and says what went wrong.
-    Set-Content (Join-Path (Split-Path (Split-Path $src)) "update-error.txt") $_.Exception.Message -ErrorAction SilentlyContinue
+    Set-Content (Join-Path (Split-Path (Split-Path $src)) "update-error.txt") $_.Exception.Message -Encoding UTF8 -ErrorAction SilentlyContinue
     if (Test-Path $exe) { Start-Process $exe }
     exit 1
   }

@@ -14,7 +14,7 @@ const STEP_MS = 6000;
 const steps = [
   {
     title: "Open MediaDrop",
-    body: "One window beside Premiere, with every source a click away. Press ⌘⇧M to bring it up from any app.",
+    body: "One window beside Premiere, with every source a click away. Press ⌥ Space (Alt+Space on Windows) to bring it up from any app.",
   },
   {
     title: "Find What You Need",

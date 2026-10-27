@@ -848,6 +848,7 @@ webview.active {
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 .btn-sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.btn.hidden { display: none; }
 .btn-primary { background: var(--accent-cyan); color: #031418; }
 .btn-primary:hover { background: #5cefff; }
 .btn-primary:disabled { background: var(--bg-surface-hover); color: var(--text-muted); cursor: not-allowed; }
@@ -1323,6 +1324,7 @@ webview.active {
 .toggle-switch {
   position: relative;
   display: inline-block;
+  flex-shrink: 0; /* a two-line description beside it would squeeze the switch */
   width: 42px;
   height: 24px;
 }

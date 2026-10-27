@@ -15,15 +15,19 @@ if (BREW_PATHS.length) process.env.PATH = `${BREW_PATHS.join(":")}:${process.env
 const SETTINGS_FILE = path.join(app.getPath("userData"), "mediadrop-settings.json");
 const DEFAULT_DOWNLOAD_DIR = path.join(app.getPath("downloads"), "MediaDrop_Imports");
 
+const DEFAULT_HOTKEY = "Alt+Space";
+const OLD_DEFAULT_HOTKEY = "CommandOrControl+Shift+M";
+
 let currentSettings = {
   downloadFolder: DEFAULT_DOWNLOAD_DIR,
-  insertMode: "timeline", // "timeline" | "bin" | "source"
-  hotkey: "CommandOrControl+Shift+M",
+  insertMode: "source", // "timeline" | "bin" | "source"
+  hotkey: DEFAULT_HOTKEY,
   alwaysOnTop: false,
   binsByType: true, // MediaDrop Imports › Videos, Images, GIFs, Music
-  importSound: true,
-  saveLocation: "folder", // "folder" | "project": a MediaDrop Media folder beside the open project
-  clipboardOffers: true // offer to download media links the user copies
+  importSound: false,
+  saveLocation: "ask", // "ask" | "folder" | "project": a MediaDrop Media folder beside the open project
+  clipboardOffers: true, // offer to download media links the user copies
+  defaultsVersion: 2
 };
 
 // Folder of the project open in Premiere, kept current by the bridge monitor
@@ -32,6 +36,57 @@ let currentProjectDir = "";
 function getDownloadDir() {
   if (currentSettings.saveLocation === "project" && currentProjectDir) return path.join(currentProjectDir, "MediaDrop Media");
   return currentSettings.downloadFolder || DEFAULT_DOWNLOAD_DIR;
+}
+
+// Where the next download goes: the setting, or with "Ask every time" the user's answer.
+// One answer covers the downloads that start together (a batch, a playlist), and
+// "Always save here" turns it into the setting. Resolves to null when the user cancels.
+const ASK_REUSE_MS = 30000;
+let lastAnswer = null; // { dir, at }
+let pendingQuestion = null;
+
+function chooseDownloadDir() {
+  if (currentSettings.saveLocation !== "ask") return Promise.resolve(getDownloadDir());
+  if (lastAnswer && Date.now() - lastAnswer.at < ASK_REUSE_MS) return Promise.resolve(lastAnswer.dir);
+  if (!pendingQuestion) pendingQuestion = askWhereToSave().finally(() => { pendingQuestion = null; });
+  return pendingQuestion;
+}
+
+async function askWhereToSave() {
+  const folder = currentSettings.downloadFolder || DEFAULT_DOWNLOAD_DIR;
+  const choices = [{ label: "Downloads folder", dir: folder, saveLocation: "folder" }];
+  if (currentProjectDir) choices.push({ label: "Beside the project", dir: path.join(currentProjectDir, "MediaDrop Media"), saveLocation: "project" });
+  choices.push({ label: "Choose Folder…" });
+  const buttons = [...choices.map((c) => c.label), "Cancel"];
+  // A download can start while MediaDrop is in the background (a copied link); the question must be seen
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+  const { response, checkboxChecked } = await dialog.showMessageBox(mainWindow, {
+    type: "question",
+    message: "Where should MediaDrop save this?",
+    detail: choices.filter((c) => c.dir).map((c) => `${c.label}: ${displayPath(c.dir)}`).join("\n"),
+    buttons,
+    defaultId: 0,
+    cancelId: buttons.length - 1,
+    checkboxLabel: "Always save here (you can change this in Settings)"
+  });
+  const choice = choices[response];
+  if (!choice) return null;
+
+  let { dir, saveLocation } = choice;
+  if (!dir) {
+    const picked = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose Where to Save",
+      defaultPath: folder,
+      properties: ["openDirectory", "createDirectory"]
+    });
+    if (picked.canceled || !picked.filePaths.length) return null;
+    dir = picked.filePaths[0];
+    saveLocation = "folder";
+  }
+  if (checkboxChecked) saveSettings(choice.dir ? { saveLocation } : { saveLocation, downloadFolder: dir });
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+  lastAnswer = { dir, at: Date.now() };
+  return dir;
 }
 
 // ffmpeg and ffprobe ship inside the app (Contents/Resources/bin, or resources\bin on Windows; vendor/<platform>/bin in dev).
@@ -65,6 +120,17 @@ function getUniqueFilePath(dir, baseName, ext) {
   return candidate;
 }
 
+// rename can't cross drives (the staging folder to an external disk), so copy then delete there
+function moveFile(from, to) {
+  try {
+    fs.renameSync(from, to);
+  } catch (e) {
+    if (e.code !== "EXDEV") throw e;
+    fs.copyFileSync(from, to);
+    fs.unlinkSync(from);
+  }
+}
+
 function getUniqueFilePathFor(dir, filename) {
   const ext = path.extname(filename);
   return getUniqueFilePath(dir, path.basename(filename, ext), ext);
@@ -75,6 +141,12 @@ function loadSettings() {
     if (fs.existsSync(SETTINGS_FILE)) {
       const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
       currentSettings = { ...currentSettings, ...data };
+      // 1.0.7 moved everyone once to the new defaults; a shortcut someone picked themselves stays
+      if (!(data.defaultsVersion >= 2)) {
+        Object.assign(currentSettings, { insertMode: "source", importSound: false, saveLocation: "ask", defaultsVersion: 2 });
+        if (!data.hotkey || data.hotkey === OLD_DEFAULT_HOTKEY) currentSettings.hotkey = DEFAULT_HOTKEY;
+        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(currentSettings, null, 2), "utf-8");
+      }
       currentSettings.hotkey = sanitizeHotkey(currentSettings.hotkey);
     }
   } catch (e) {
@@ -100,20 +172,22 @@ function saveSettings(newSettings) {
 // Any key combination is allowed, bare keys included; the settings screen warns when a
 // shortcut without ⌘, ⌃ or ⌥ will stop that key from typing in other apps
 function sanitizeHotkey(shortcut) {
-  if (!shortcut || typeof shortcut !== "string") return "CommandOrControl+Shift+M";
+  if (!shortcut || typeof shortcut !== "string") return DEFAULT_HOTKEY;
   const parts = shortcut.trim().split("+").map(p => p.trim());
   const modifiers = ["Command", "Cmd", "Control", "Ctrl", "CommandOrControl", "Alt", "Option", "Super", "Shift"];
   const keys = parts.filter(p => !modifiers.includes(p));
-  if (keys.length !== 1 || !keys[0]) return "CommandOrControl+Shift+M";
+  if (keys.length !== 1 || !keys[0]) return DEFAULT_HOTKEY;
   return parts.join("+");
 }
 
+// ⌥Space / Alt+Space is also the default of a few launchers (ChatGPT, Raycast); when another
+// app already has it, the old three-key default still brings MediaDrop up
 function registerGlobalHotkey(shortcut) {
   try {
     globalShortcut.unregisterAll();
-    const candidate = (shortcut && typeof shortcut === "string" && shortcut.trim()) 
-      ? shortcut.trim() 
-      : "CommandOrControl+Shift+M";
+    const candidate = (shortcut && typeof shortcut === "string" && shortcut.trim())
+      ? shortcut.trim()
+      : DEFAULT_HOTKEY;
 
     let registered = false;
     try {
@@ -125,8 +199,8 @@ function registerGlobalHotkey(shortcut) {
     }
 
     console.log(`[MediaDrop] Global shortcut "${candidate}" registered:`, registered);
-    if (!registered && candidate !== "CommandOrControl+Shift+M") {
-      globalShortcut.register("CommandOrControl+Shift+M", () => {
+    if (!registered && candidate !== OLD_DEFAULT_HOTKEY) {
+      globalShortcut.register(OLD_DEFAULT_HOTKEY, () => {
         toggleOrSurfaceWindow();
       });
     }
@@ -418,7 +492,7 @@ function mediaBin(filePath) {
 
 // site: where the file came from ("YouTube", "Envato", …), kept for history
 async function importFile(filePath, site) {
-  const mode = currentSettings.insertMode || "timeline";
+  const mode = currentSettings.insertMode || "source";
   const bin = currentSettings.binsByType !== false ? mediaBin(filePath) : "";
   const itemName = path.basename(filePath);
   try {
@@ -521,9 +595,18 @@ function setupUnifiedSession() {
     let filename = item.getFilename() || `asset_${Date.now()}`;
     filename = safeFileName(filename);
 
-    const savePath = getUniqueFilePathFor(getDownloadDir(), filename);
+    // Electron needs the save path right away, so while "Ask every time" waits for an answer
+    // the file downloads to a staging folder and moves to the chosen one when it's done
+    const fresh = lastAnswer && Date.now() - lastAnswer.at < ASK_REUSE_MS;
+    const knownDir = currentSettings.saveLocation !== "ask" ? getDownloadDir() : fresh ? lastAnswer.dir : null;
+    const chosenDir = knownDir ? null : chooseDownloadDir();
+    const saveDir = knownDir || path.join(app.getPath("temp"), "mediadrop-staging");
+    try { fs.mkdirSync(saveDir, { recursive: true }); } catch (e) {}
+    let savePath = getUniqueFilePathFor(saveDir, filename);
     filename = path.basename(savePath);
     item.setSavePath(savePath);
+    let cancelledByUser = false;
+    if (chosenDir) chosenDir.then((dir) => { if (!dir) { cancelledByUser = true; item.cancel(); } });
 
     const downloadId = "dl-" + Date.now();
     let pageUrl = "";
@@ -550,7 +633,23 @@ function setupUnifiedSession() {
     });
 
     item.once("done", async (_e, state) => {
-      if (state === "completed") {
+      if (state === "completed" && chosenDir) {
+        const dir = await chosenDir;
+        if (!dir) {
+          cancelledByUser = true;
+          try { fs.unlinkSync(savePath); } catch (e) {}
+        } else {
+          const dest = getUniqueFilePathFor(dir, filename);
+          try {
+            moveFile(savePath, dest);
+            savePath = dest;
+            filename = path.basename(dest);
+          } catch (e) {
+            console.error("[MediaDrop] Could not move the download to", dir, e);
+          }
+        }
+      }
+      if (state === "completed" && !cancelledByUser) {
         await normalizeAndIngestMedia(savePath, filename, downloadId);
       } else {
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -560,7 +659,7 @@ function setupUnifiedSession() {
             percent: 100,
             state: "error",
             phase: "error",
-            subText: `The download of "${filename}" didn't finish (${state}).`
+            subText: cancelledByUser ? `"${filename}" wasn't saved.` : `The download of "${filename}" didn't finish (${state}).`
           });
         }
       }
@@ -1230,9 +1329,10 @@ function findPrimaryMediaFile(dir) {
 
 // Download image/gif/video from URL directly (for right-click context menu)
 // name: optional title for the file, e.g. a search result's title
-function downloadDirectMedia(mediaUrl, mediaType = "image", referrer = "", name = "") {
+async function downloadDirectMedia(mediaUrl, mediaType = "image", referrer = "", name = "") {
   try {
-    const downloadDir = getDownloadDir();
+    const downloadDir = await chooseDownloadDir();
+    if (!downloadDir) return;
     if (!fs.existsSync(downloadDir)) {
       try { fs.mkdirSync(downloadDir, { recursive: true }); } catch (e) {}
     }
@@ -1666,11 +1766,6 @@ function setupYouTubeHandlers() {
       .trim()
       .slice(0, 80);
 
-    const downloadDir = getDownloadDir();
-    if (!fs.existsSync(downloadDir)) {
-      try { fs.mkdirSync(downloadDir, { recursive: true }); } catch (e) {}
-    }
-
     const downloadId = "yt-" + Date.now();
     ctx.downloadId = downloadId;
     downloadSources.set(downloadId, "YouTube");
@@ -1683,6 +1778,11 @@ function setupYouTubeHandlers() {
       sendProgress(downloadId, path.basename(existing), { percent: 100, state: "completed", phase: "completed", reused: true });
       sendToPremiere(existing, downloadId);
       return { ok: true, outPath: existing, reused: true };
+    }
+    const downloadDir = await chooseDownloadDir();
+    if (!downloadDir) return { ok: false, cancelled: true };
+    if (!fs.existsSync(downloadDir)) {
+      try { fs.mkdirSync(downloadDir, { recursive: true }); } catch (e) {}
     }
     // "original" keeps whatever container yt-dlp produced, so its extension is only known afterwards
     const finalExt = isAudio ? audioFormat : (output === "prores" ? "mov" : "mp4");
@@ -1999,7 +2099,7 @@ function setupIpcHandlers() {
     if (typeof input.alwaysOnTop === "boolean") accepted.alwaysOnTop = input.alwaysOnTop;
     if (typeof input.binsByType === "boolean") accepted.binsByType = input.binsByType;
     if (typeof input.importSound === "boolean") accepted.importSound = input.importSound;
-    if (["folder", "project"].includes(input.saveLocation)) accepted.saveLocation = input.saveLocation;
+    if (["ask", "folder", "project"].includes(input.saveLocation)) accepted.saveLocation = input.saveLocation;
     if (typeof input.clipboardOffers === "boolean") accepted.clipboardOffers = input.clipboardOffers;
     if (typeof input.hotkey === "string" && input.hotkey.length <= 64) accepted.hotkey = sanitizeHotkey(input.hotkey);
     return saveSettings(accepted);

@@ -10,7 +10,6 @@ if (IS_WIN) {
   document.getElementById("toastReveal").textContent = `Show in ${FILE_MANAGER}`;
   document.getElementById("navBack").title = "Go Back (Mouse Back / Alt+Left)";
   document.getElementById("navForward").title = "Go Forward (Mouse Forward / Alt+Right)";
-  document.getElementById("btnResetHotkey").title = "Reset to Ctrl+Shift+M";
 }
 
 // ── DOM ELEMENTS ─────────────────────────────────────────────────────────────
@@ -579,12 +578,12 @@ window.addEventListener("contextmenu", (e) => {
 // ── SETTINGS & ALWAYS-ON-TOP ─────────────────────────────────────────────────
 let appSettings = {
   downloadFolder: "",
-  insertMode: "timeline",
-  hotkey: "CommandOrControl+Shift+M",
+  insertMode: "source",
+  hotkey: "Alt+Space",
   alwaysOnTop: false,
   binsByType: true,
-  importSound: true,
-  saveLocation: "folder",
+  importSound: false,
+  saveLocation: "ask",
   clipboardOffers: true
 };
 
@@ -606,7 +605,7 @@ function showNotice(text, icon = "✓") {
   }, 1900);
 }
 
-const DEFAULT_HOTKEY = "CommandOrControl+Shift+M";
+const DEFAULT_HOTKEY = "Alt+Space";
 const HOTKEY_HINT = "Brings MediaDrop up from any app";
 const KEY_SYMBOLS = IS_WIN
   ? { CommandOrControl: "Ctrl", Control: "Ctrl", Alt: "Alt", Shift: "Shift", Super: "Win" }
@@ -654,7 +653,7 @@ async function loadAppSettings() {
 }
 
 function updateSettingsUI() {
-  if (settingInsertMode) settingInsertMode.value = appSettings.insertMode || "timeline";
+  if (settingInsertMode) settingInsertMode.value = appSettings.insertMode || "source";
   if (settingFolderPath) {
     const folder = appSettings.downloadFolder || "";
     settingFolderPath.textContent = folder ? folder.replace(/^\/Users\/[^/]+/, "~") : "~/Downloads/MediaDrop_Imports";
@@ -665,7 +664,7 @@ function updateSettingsUI() {
   settingBinsByType.checked = appSettings.binsByType !== false;
   settingImportSound.checked = appSettings.importSound !== false;
   settingClipboard.checked = appSettings.clipboardOffers !== false;
-  settingSaveLocation.value = appSettings.saveLocation === "project" ? "project" : "folder";
+  settingSaveLocation.value = ["folder", "project"].includes(appSettings.saveLocation) ? appSettings.saveLocation : "ask";
   const preset = getYtPreset();
   settingYtPreset.textContent = ytPresetSummary(preset);
   btnForgetYtPreset.classList.toggle("hidden", !preset);
@@ -705,7 +704,9 @@ function stopRecordingHotkey() {
   renderHotkey(appSettings.hotkey);
 }
 
-function openSettings() {
+// "Always save here" in the where-to-save question changes the settings from the main process
+async function openSettings() {
+  await loadAppSettings();
   settingsSnapshot = {
     insertMode: appSettings.insertMode,
     hotkey: appSettings.hotkey,
@@ -1468,7 +1469,10 @@ async function runYouTubeDownload(opts, title, summary) {
   } catch (err) {
     res = { ok: false, error: err.message };
   }
-  if (!res || !res.ok) {
+  if (res && res.cancelled) {
+    // Cancel in "Where should MediaDrop save this?"
+    setToast({ title: "Not downloaded", sub: title, hideAfter: 2500 });
+  } else if (!res || !res.ok) {
     setToast({ kind: "warn", icon: "!", title: "Download failed", sub: friendlyYouTubeError(res && res.error), hideAfter: 10000 });
   }
 }
@@ -1581,7 +1585,7 @@ function setStep(id, done, todo) {
 function updateBridgeUI(status) {
   premiere = { ...premiere, ...status, checked: true };
   const { online, project, sequence, pending } = premiere;
-  const mode = appSettings.insertMode || "timeline";
+  const mode = appSettings.insertMode || "source";
   const needsSequence = mode === "timeline";
 
   let kind, label;

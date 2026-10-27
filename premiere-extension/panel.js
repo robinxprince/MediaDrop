@@ -74,7 +74,7 @@ const ICONS = {
 
 // Where the MediaDrop app will put the next download (its "Send downloads to" setting)
 function destination(sequence) {
-  const mode = (readJson(APP_SETTINGS_FILE, {}) || {}).insertMode || "timeline";
+  const mode = (readJson(APP_SETTINGS_FILE, {}) || {}).insertMode || "source";
   if (mode === "source") return { icon: "source", target: "Source Monitor" };
   if (mode === "bin") return { icon: "bin", target: "MediaDrop Imports bin" };
   if (!sequence) return { icon: "bin", target: "MediaDrop Imports bin (no sequence open)" };

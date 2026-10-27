@@ -132,7 +132,7 @@ TIPS
     GIFs from many sites. Each result says if it's free to use.
   - Right-click any image, GIF or video in MediaDrop to import it.
   - Click the download icon on a YouTube thumbnail to pick a quality.
-  - Press Ctrl+Shift+M to show MediaDrop from any app
+  - Press Alt+Space to show MediaDrop from any app
     (change it in Settings).
   - Everything is saved to Downloads\\MediaDrop_Imports, even
     when Premiere Pro isn't open.
@@ -253,7 +253,7 @@ TIPS
     GIFs from many sites. Each result says if it's free to use.
   - Right-click any image, GIF or video in MediaDrop to import it.
   - Click the download icon on a YouTube thumbnail to pick a quality.
-  - Press Command+Shift+M to show MediaDrop from any app
+  - Press Option+Space to show MediaDrop from any app
     (change it in Settings).
   - Everything is saved to Downloads/MediaDrop_Imports, even
     when Premiere Pro isn't open.
